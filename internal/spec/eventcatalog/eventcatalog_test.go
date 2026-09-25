@@ -303,15 +303,15 @@ func TestParseModel(t *testing.T) {
 			t.Errorf("datacontenttype fallback = %q", first.CE.DataContentType)
 		}
 		if len(first.Bindings) != 1 || first.Bindings[0].Protocol != "kafka" || first.Bindings[0].Address != "t.events" ||
-			first.Bindings[0].Props["mode"] != "binary" {
+			first.Bindings[0].Props["mode"] != "binary" || first.Bindings[0].Pointer != "/defaults/bindings/0" {
 			t.Errorf("default bindings = %+v", first.Bindings)
 		}
 		if second.CE.Source != "/own" || second.CE.DataContentType != "application/cloudevents+json" {
 			t.Errorf("own attributes = %+v", second.CE)
 		}
 		wantB := []model.Binding{
-			{Protocol: "nats", Address: "t.cmd", Props: map[string]any{"stream": "T"}},
-			{Protocol: "servicebus", Address: "q"},
+			{Protocol: "nats", Address: "t.cmd", Props: map[string]any{"stream": "T"}, Pointer: "/messages/1/bindings/0"},
+			{Protocol: "servicebus", Address: "q", Pointer: "/messages/1/bindings/1"},
 		}
 		if b, _ := json.Marshal(second.Bindings); string(b) != mustJSON(t, wantB) {
 			t.Errorf("own bindings = %s, want %s (they replace the defaults)", b, mustJSON(t, wantB))

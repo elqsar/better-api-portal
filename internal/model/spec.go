@@ -36,7 +36,9 @@ type Message struct {
 	Bindings   []Binding `json:"bindings"`
 	Examples   []Example `json:"examples,omitempty"`
 	Deprecated bool      `json:"deprecated,omitempty"`
-	Line       int       `json:"line"` // in the entry file
+	// Pointer locates the message in the entry file, for findings.
+	Pointer string `json:"pointer"`
+	Line    int    `json:"line"` // in the entry file
 }
 
 // CEAttributes are the CloudEvents envelope attributes a message declares.
@@ -60,6 +62,9 @@ type Binding struct {
 	Protocol string         `json:"protocol"` // kafka | nats | sns | sqs | eventbridge | pubsub | servicebus
 	Address  string         `json:"address"`  // topic, subject, queue or bus
 	Props    map[string]any `json:"props,omitempty"`
+	// Pointer locates the binding in the entry file. Bindings inherited from
+	// defaults share the pointer of the default.
+	Pointer string `json:"pointer"`
 }
 
 // Example is a named sample payload.

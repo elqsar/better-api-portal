@@ -31,6 +31,8 @@ type Result struct {
 	// Payloads holds the compiled payload schema of each message, by type,
 	// for rules that validate data against it.
 	Payloads map[string]*jsonschema.Schema
+	// Doc is the parsed entry file, for resolving pointers to lines.
+	Doc *yamldoc.Doc
 }
 
 // Parse reads the event catalogue at specPath. root is the descriptor's
@@ -188,7 +190,7 @@ func (p *parser) build(cat *catalogue) (*Result, []model.Finding, error) {
 		Description: cat.Description,
 		Schemas:     map[string]*model.Schema{},
 	}
-	res := &Result{Spec: spec, Payloads: map[string]*jsonschema.Schema{}}
+	res := &Result{Spec: spec, Payloads: map[string]*jsonschema.Schema{}, Doc: p.doc}
 
 	firstByType := map[string]int{}
 	for i, m := range cat.Messages {
@@ -214,14 +216,15 @@ func (p *parser) build(cat *catalogue) (*Result, []model.Finding, error) {
 			},
 			Examples:   m.Examples,
 			Deprecated: m.Deprecated,
+			Pointer:    base,
 			Line:       p.doc.Line(base),
 		}
 		// A message's own bindings replace the defaults; they aren't merged.
-		bindings := m.Bindings
-		if bindings == nil {
-			bindings = cat.Defaults.Bindings
+		if m.Bindings != nil {
+			msg.Bindings = normaliseBindings(m.Bindings, base+"/bindings")
+		} else {
+			msg.Bindings = normaliseBindings(cat.Defaults.Bindings, "/defaults/bindings")
 		}
-		msg.Bindings = normaliseBindings(bindings)
 
 		schema, payload, err := p.resolve(i, entry, m.DataSchema)
 		if err != nil {
@@ -311,9 +314,10 @@ func (p *parser) addFinding(rule, ptr, msg string) {
 
 // normaliseBindings maps each {protocol: {...}} item to a model.Binding,
 // moving the protocol's address field into Address.
-func normaliseBindings(bs []binding) []model.Binding {
+// base is the pointer of the list in the source file.
+func normaliseBindings(bs []binding, base string) []model.Binding {
 	out := make([]model.Binding, 0, len(bs))
-	for _, b := range bs {
+	for i, b := range bs {
 		for proto, fields := range b {
 			props := make(map[string]any, len(fields))
 			for k, v := range fields {
@@ -333,7 +337,12 @@ func normaliseBindings(bs []binding) []model.Binding {
 			if len(props) == 0 {
 				props = nil
 			}
-			out = append(out, model.Binding{Protocol: proto, Address: addr, Props: props})
+			out = append(out, model.Binding{
+				Protocol: proto,
+				Address:  addr,
+				Props:    props,
+				Pointer:  base + "/" + strconv.Itoa(i),
+			})
 		}
 	}
 	return out

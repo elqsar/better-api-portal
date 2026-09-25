@@ -37,5 +37,5 @@ tasks:
       - |
         for f in docs/spec/examples/*/portal.yaml; do
           echo "== $f"
-          bin/portal check --descriptor "$f" || exit 1
+          bin/portal check --config docs/spec/examples/portal.config.yaml --descriptor "$f" || exit 1
         done

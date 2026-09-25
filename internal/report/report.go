@@ -1,4 +1,4 @@
-// Package report renders findings for CI logs and machines.
+// Package report renders check results for CI logs and machines.
 package report
 
 import (
@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"io"
 
+	"better-api-portal/internal/check"
 	"better-api-portal/internal/model"
 )
 
 // Text writes one line per finding, `file:line: severity [rule] pointer: message`,
-// followed by a summary line.
-func Text(w io.Writer, findings []model.Finding) error {
-	for _, f := range findings {
+// then each API's score, then a summary line.
+func Text(w io.Writer, r *check.Report) error {
+	for _, f := range r.Findings {
 		loc := f.File
 		if f.Line > 0 {
 			loc = fmt.Sprintf("%s:%d", loc, f.Line)
@@ -25,20 +26,30 @@ func Text(w io.Writer, findings []model.Finding) error {
 			return err
 		}
 	}
-	c := model.Counts(findings)
+	for _, a := range r.APIs {
+		if _, err := fmt.Fprintf(w, "%s: score %d\n", a.ID, a.Score); err != nil {
+			return err
+		}
+	}
+	c := model.Counts(r.Findings)
 	_, err := fmt.Fprintf(w, "%d error(s), %d warning(s), %d info\n",
 		c[model.SeverityError], c[model.SeverityWarn], c[model.SeverityInfo])
 	return err
 }
 
-// JSON writes {"findings": [...]}; the list is never null.
-func JSON(w io.Writer, findings []model.Finding) error {
-	if findings == nil {
-		findings = []model.Finding{}
+// JSON writes {"findings": [...], "apis": [...]}; the lists are never null.
+func JSON(w io.Writer, r *check.Report) error {
+	out := struct {
+		Findings []model.Finding   `json:"findings"`
+		APIs     []check.APIResult `json:"apis"`
+	}{r.Findings, r.APIs}
+	if out.Findings == nil {
+		out.Findings = []model.Finding{}
+	}
+	if out.APIs == nil {
+		out.APIs = []check.APIResult{}
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(struct {
-		Findings []model.Finding `json:"findings"`
-	}{findings})
+	return enc.Encode(out)
 }

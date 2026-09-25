@@ -93,3 +93,13 @@ func Flatten(e *jsonschema.ValidationError, describe func(*jsonschema.Validation
 	}
 	return vs
 }
+
+// ValidationViolations flattens the error returned by Schema.Validate. Errors
+// other than validation failures are returned as is.
+func ValidationViolations(err error) ([]Violation, error) {
+	var ve *jsonschema.ValidationError
+	if !errors.As(err, &ve) {
+		return nil, err
+	}
+	return Flatten(ve, Message), nil
+}

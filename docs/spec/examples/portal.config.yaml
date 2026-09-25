@@ -1,0 +1,12 @@
+# Sample portal configuration (docs/spec/05-architecture.md §Portal configuration).
+# `portal check --config` reads the org section; the rest is used by the server.
+org:
+  name: Acme
+  eventTypePrefix: com.acme.
+teams:
+  - { slug: team-orders, name: Orders, oidcGroup: eng-orders }
+  - { slug: team-payments, name: Payments, oidcGroup: eng-payments }
+admins: { oidcGroup: eng-platform }
+brokers:
+  - { name: kafka-staging, protocol: kafka, bootstrap: kafka.staging.internal:9093 }
+  - { name: kafka-prod, protocol: kafka, bootstrap: kafka.prod.internal:9093 }

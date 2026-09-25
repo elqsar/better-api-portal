@@ -13,6 +13,7 @@ const (
 // Finding is one result of a check: a schema violation, a lint rule, a
 // breaking change, and so on.
 type Finding struct {
+	API      string   `json:"api,omitempty"` // id of the API the finding is about, if any
 	RuleID   string   `json:"rule_id"`
 	Severity Severity `json:"severity"`
 	Message  string   `json:"message"`

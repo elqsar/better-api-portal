@@ -32,7 +32,8 @@
               "pointer": "/orderId"
             },
             "mode": "binary"
-          }
+          },
+          "pointer": "/defaults/bindings/0"
         }
       ],
       "examples": [
@@ -48,6 +49,7 @@
           }
         }
       ],
+      "pointer": "/messages/0",
       "line": 16
     },
     {
@@ -70,9 +72,11 @@
               "pointer": "/orderId"
             },
             "mode": "binary"
-          }
+          },
+          "pointer": "/defaults/bindings/0"
         }
       ],
+      "pointer": "/messages/1",
       "line": 32
     },
     {
@@ -90,9 +94,11 @@
           "address": "orders.commands.cancel",
           "props": {
             "stream": "ORDERS_CMD"
-          }
+          },
+          "pointer": "/messages/2/bindings/0"
         }
       ],
+      "pointer": "/messages/2",
       "line": 44
     }
   ],
