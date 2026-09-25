@@ -1,0 +1,100 @@
+{
+  "kind": "openapi",
+  "title": "Orders API",
+  "version": "2.3.0",
+  "description": "Create, read and cancel orders.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/orders/{orderId}",
+      "operation_id": "getOrder",
+      "summary": "Get an order",
+      "description": "Returns a single order by id.",
+      "tags": [
+        "orders"
+      ],
+      "security": [
+        "bearerAuth"
+      ],
+      "parameters": [
+        {
+          "name": "orderId",
+          "in": "path",
+          "required": true,
+          "schema": "api/openapi.yaml#/components/parameters/OrderId/schema"
+        }
+      ],
+      "responses": {
+        "200": {
+          "application/json": "api/openapi.yaml#/components/schemas/Order"
+        },
+        "401": {
+          "application/problem+json": "api/openapi.yaml#/components/schemas/Problem"
+        },
+        "404": {
+          "application/problem+json": "api/openapi.yaml#/components/schemas/Problem"
+        }
+      },
+      "pointer": "/paths/~1orders~1{orderId}/get",
+      "line": 17
+    },
+    {
+      "method": "POST",
+      "path": "/orders/{orderId}/cancellation",
+      "operation_id": "cancelOrder",
+      "summary": "Cancel an order",
+      "description": "Requests cancellation. Emits com.acme.orders.order.cancelled.v1 on success.",
+      "tags": [
+        "orders"
+      ],
+      "security": [
+        "bearerAuth"
+      ],
+      "parameters": [
+        {
+          "name": "orderId",
+          "in": "path",
+          "required": true,
+          "schema": "api/openapi.yaml#/components/parameters/OrderId/schema"
+        }
+      ],
+      "request": {
+        "application/json": "api/openapi.yaml#/paths/~1orders~1{orderId}~1cancellation/post/requestBody/content/application~1json/schema"
+      },
+      "responses": {
+        "202": {},
+        "401": {
+          "application/problem+json": "api/openapi.yaml#/components/schemas/Problem"
+        },
+        "404": {
+          "application/problem+json": "api/openapi.yaml#/components/schemas/Problem"
+        },
+        "409": {
+          "application/problem+json": "api/openapi.yaml#/components/schemas/Problem"
+        }
+      },
+      "pointer": "/paths/~1orders~1{orderId}~1cancellation/post",
+      "line": 33
+    }
+  ],
+  "servers": [
+    "https://orders.prod.internal"
+  ],
+  "schemas": {
+    "api/openapi.yaml#/components/schemas/Money": {
+      "pointer": "api/openapi.yaml#/components/schemas/Money",
+      "draft": "2020-12"
+    },
+    "api/openapi.yaml#/components/schemas/Order": {
+      "pointer": "api/openapi.yaml#/components/schemas/Order",
+      "draft": "2020-12"
+    },
+    "api/openapi.yaml#/components/schemas/Problem": {
+      "pointer": "api/openapi.yaml#/components/schemas/Problem",
+      "draft": "2020-12"
+    }
+  },
+  "files": [
+    "api/openapi.yaml"
+  ]
+}

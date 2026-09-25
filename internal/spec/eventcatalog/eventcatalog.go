@@ -17,6 +17,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"better-api-portal/docs/spec/schemas"
+	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/yamldoc"
 )
@@ -298,7 +299,7 @@ func (p *parser) resolve(i int, entry string, ds dataschema) (*jsonschema.Schema
 // rel returns abs as a slash path relative to the root, or an error if it
 // lies outside it.
 func (p *parser) rel(abs string) (string, error) {
-	return relTo(p.root, abs)
+	return bundle.RelTo(p.root, abs)
 }
 
 func (p *parser) addFinding(rule, ptr, msg string) {

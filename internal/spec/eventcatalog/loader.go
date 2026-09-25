@@ -10,6 +10,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/yamldoc"
 )
 
@@ -38,7 +39,7 @@ func (l *loader) Load(url string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rel, err := relTo(l.root, path)
+	rel, err := bundle.RelTo(l.root, path)
 	if err != nil {
 		out, _ := filepath.Rel(l.root, path)
 		return nil, fmt.Errorf("a $ref leads to %s, which leaves the descriptor's directory", filepath.ToSlash(out))
@@ -95,19 +96,6 @@ func checkDraft(doc any) (string, error) {
 	return "", fmt.Errorf("$schema %s is not supported; use draft-07, 2019-09 or 2020-12", s)
 }
 
-// relTo returns abs as a slash path relative to root, or an error if it lies
-// outside it.
-func relTo(root, abs string) (string, error) {
-	rel, err := filepath.Rel(root, abs)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%s is outside %s", abs, root)
-	}
-	return filepath.ToSlash(rel), nil
-}
-
 func fileURL(abs string) string {
 	return (&gourl.URL{Scheme: "file", Path: filepath.ToSlash(abs)}).String()
 }
@@ -150,7 +138,7 @@ func (l *loader) display(url string) string {
 	if err != nil {
 		return url
 	}
-	if rel, err := relTo(l.root, path); err == nil {
+	if rel, err := bundle.RelTo(l.root, path); err == nil {
 		return rel
 	}
 	return url

@@ -15,6 +15,7 @@ import (
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/policy"
 	"better-api-portal/internal/spec/eventcatalog"
+	"better-api-portal/internal/spec/openapi"
 )
 
 // Options configure a check.
@@ -93,8 +94,37 @@ func Run(descPath string, opts Options) (*Report, error) {
 			}
 			fs = append(fs, gate...)
 			r.APIs = append(r.APIs, result)
-		case descriptor.KindOpenAPI, descriptor.KindAsyncAPI:
-			// Parsed in later milestones.
+		case descriptor.KindOpenAPI:
+			res, parsed, err := openapi.Parse(d.Dir, d.SpecPath(i))
+			if err != nil {
+				return nil, err
+			}
+			fs = parsed
+			if res == nil {
+				break // the document can't be read as a whole: nothing to lint or score
+			}
+			var envs []string
+			for _, e := range api.Environments {
+				if e.URL != "" {
+					envs = append(envs, e.URL)
+				}
+			}
+			fs = append(fs, lint.OpenAPI(lint.OpenAPITarget{
+				Spec:         res.Spec,
+				Doc:          res.Doc,
+				Raw:          res.Raw,
+				Bytes:        res.Bytes,
+				File:         res.Doc.Path,
+				Dir:          filepath.Dir(res.Doc.Path),
+				Environments: envs,
+			}, cfg)...)
+			r.APIs = append(r.APIs, APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version})
+			if base != nil && hasAPI(base, api.ID) {
+				fs = append(fs, model.Finding{RuleID: "diff-unsupported", Severity: model.SeverityInfo, File: res.Doc.Path,
+					Message: "not compared with the baseline: diffing OpenAPI arrives with oasdiff"})
+			}
+		case descriptor.KindAsyncAPI:
+			// Parsed in a later milestone.
 		}
 		for j := range fs {
 			fs[j].API = api.ID
@@ -102,6 +132,15 @@ func Run(descPath string, opts Options) (*Report, error) {
 		r.Findings = append(r.Findings, fs...)
 	}
 	return r, nil
+}
+
+func hasAPI(d *descriptor.Descriptor, id string) bool {
+	for _, a := range d.APIs {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func loadBaseline(path string) (*descriptor.Descriptor, error) {

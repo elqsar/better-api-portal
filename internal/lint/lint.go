@@ -23,6 +23,8 @@ type Target struct {
 	Payloads map[string]*jsonschema.Schema
 	File     string               // the entry file, named in findings
 	Line     func(ptr string) int // resolves a pointer in File to its line
+
+	openapi *OpenAPITarget // set for the OpenAPI rules, which read the raw document
 }
 
 // rule is one check. Its severity lives here rather than in the check, so

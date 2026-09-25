@@ -8,6 +8,9 @@ type Spec struct {
 	Version     string    `json:"version"`
 	Description string    `json:"description,omitempty"`
 	Messages    []Message `json:"messages,omitempty"`
+	// Operations and Servers are set for OpenAPI specs.
+	Operations []Operation `json:"operations,omitempty"`
+	Servers    []string    `json:"servers,omitempty"`
 	// Schemas holds every schema document the spec uses, keyed by pointer.
 	Schemas map[string]*Schema `json:"schemas,omitempty"`
 	// Files is the bundle closure: the entry file and every file reachable
@@ -76,6 +79,38 @@ type Example struct {
 // Schema is one schema document within a version.
 type Schema struct {
 	Pointer string `json:"pointer"`
-	Draft   string `json:"draft"` // 07 | 2019-09 | 2020-12
+	Draft   string `json:"draft"` // 07 | 2019-09 | 2020-12, or oas3.0 for OpenAPI 3.0 schema objects
 	Doc     any    `json:"-"`
+}
+
+// Operation is an HTTP operation (docs/spec/02-domain-model.md).
+type Operation struct {
+	Method      string   `json:"method"` // upper case
+	Path        string   `json:"path"`
+	OperationID string   `json:"operation_id,omitempty"`
+	Summary     string   `json:"summary,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Deprecated  bool     `json:"deprecated,omitempty"`
+	// Security lists the scheme names in effect: the operation's own
+	// requirements if it declares any (even an empty list), else the
+	// document's. Empty means none.
+	Security   []string    `json:"security,omitempty"`
+	Parameters []Parameter `json:"parameters,omitempty"`
+	// Request maps media types to schema pointers.
+	Request map[string]string `json:"request,omitempty"`
+	// Responses maps status codes to media types to schema pointers. A
+	// response without content has an empty map.
+	Responses map[string]map[string]string `json:"responses,omitempty"`
+	Pointer   string                       `json:"pointer"` // in the entry file
+	Line      int                          `json:"line"`
+}
+
+// Parameter is an operation parameter, including those inherited from its
+// path.
+type Parameter struct {
+	Name     string `json:"name"`
+	In       string `json:"in"`
+	Required bool   `json:"required,omitempty"`
+	Schema   string `json:"schema,omitempty"` // pointer
 }

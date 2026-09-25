@@ -80,6 +80,12 @@ func (d *Doc) Line(ptr string) int {
 	}
 }
 
+// Has reports whether ptr names a node of the document.
+func (d *Doc) Has(ptr string) bool {
+	_, ok := d.lines[ptr]
+	return ok
+}
+
 // Decode decodes the document into v, as yaml.Unmarshal would.
 func (d *Doc) Decode(v any) error {
 	if err := d.Root.Decode(v); err != nil {

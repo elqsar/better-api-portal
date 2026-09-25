@@ -21,18 +21,29 @@ func TestRunExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The example deliberately leaves one produced event undescribed.
-	if len(r.Findings) != 1 {
-		t.Fatalf("got %d findings, want 1: %+v", len(r.Findings), r.Findings)
+	// Recorded from a run with vacuum v0.30.6: no errors; the events API
+	// deliberately leaves one produced event undescribed, and the HTTP API
+	// gets vacuum's recommended warnings plus two unbounded integers.
+	counts := map[string]int{}
+	for _, f := range r.Findings {
+		if f.Severity != model.SeverityWarn {
+			t.Errorf("unexpected %s finding: %+v", f.Severity, f)
+		}
+		counts[f.API+" "+f.RuleID]++
 	}
-	f := r.Findings[0]
-	if f.RuleID != "ce-description" || f.Severity != model.SeverityWarn || f.API != "orders-events" ||
-		f.Pointer != "/messages/1" || f.Line != 32 {
-		t.Errorf("finding = %+v", f)
+	want := map[string]int{
+		"orders-events ce-description":      1,
+		"orders-http sec-integer-bounds":    2,
+		"orders-http oas3-missing-example":  8,
+		"orders-http component-description": 4,
+		"orders-http operation-description": 1,
 	}
-	want := []APIResult{{ID: "orders-events", Score: 98, Version: "1.4.0"}}
-	if !reflect.DeepEqual(r.APIs, want) {
-		t.Errorf("apis = %+v, want %+v", r.APIs, want)
+	if !reflect.DeepEqual(counts, want) {
+		t.Errorf("findings = %v, want %v", counts, want)
+	}
+	wantAPIs := []APIResult{{ID: "orders-http", Score: 70, Version: "2.3.0"}, {ID: "orders-events", Score: 98, Version: "1.4.0"}}
+	if !reflect.DeepEqual(r.APIs, wantAPIs) {
+		t.Errorf("apis = %+v, want %+v", r.APIs, wantAPIs)
 	}
 }
 
@@ -98,6 +109,17 @@ const example = "../../docs/spec/examples/orders-service"
 
 var dropCustomerID = [2]string{`"required": ["orderId", "customerId", "total"]`, `"required": ["orderId", "total"]`}
 
+func eventsAPI(t *testing.T, r *Report) APIResult {
+	t.Helper()
+	for _, a := range r.APIs {
+		if a.ID == "orders-events" || a.ID == "orders-events-v2" {
+			return a
+		}
+	}
+	t.Fatalf("no events API in %+v", r.APIs)
+	return APIResult{}
+}
+
 // errorsOf lists "rule id" of error findings.
 func errorsOf(r *Report) []string {
 	var out []string
@@ -122,7 +144,7 @@ func TestRunBaseline(t *testing.T) {
 		if len(errs) != 1 || !strings.HasPrefix(errs[0], "compat-required BRK-CE-") {
 			t.Fatalf("errors = %v", errs)
 		}
-		a := r.APIs[0]
+		a := eventsAPI(t, r)
 		if a.BaselineVersion != "1.4.0" || a.Version != "1.5.0" || len(a.Changes) != 1 || a.Score != 98 {
 			t.Errorf("api = %+v", a)
 		}
@@ -166,8 +188,16 @@ func TestRunBaseline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if errs := errorsOf(r); len(errs) > 0 || len(r.APIs[0].Changes) > 0 {
-			t.Errorf("errors = %v, changes = %+v", errs, r.APIs[0].Changes)
+		if errs := errorsOf(r); len(errs) > 0 || len(eventsAPI(t, r).Changes) > 0 {
+			t.Errorf("errors = %v, changes = %+v", errs, eventsAPI(t, r).Changes)
+		}
+		// OpenAPI isn't diffed yet, and says so.
+		var noted bool
+		for _, f := range r.Findings {
+			noted = noted || (f.API == "orders-http" && f.RuleID == "diff-unsupported" && f.Severity == model.SeverityInfo)
+		}
+		if !noted {
+			t.Error("no diff-unsupported note for orders-http")
 		}
 	})
 
@@ -177,8 +207,8 @@ func TestRunBaseline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if errs := errorsOf(r); len(errs) > 0 || r.APIs[0].BaselineVersion != "" {
-			t.Errorf("errors = %v, api = %+v", errs, r.APIs[0])
+		if errs := errorsOf(r); len(errs) > 0 || eventsAPI(t, r).BaselineVersion != "" {
+			t.Errorf("errors = %v, api = %+v", errs, eventsAPI(t, r))
 		}
 	})
 
