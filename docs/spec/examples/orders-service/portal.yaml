@@ -1,0 +1,29 @@
+apiVersion: portal/v1
+owner: team-orders
+system: commerce
+links:
+  - { title: Runbook, url: "https://wiki.internal/orders/runbook" }
+  - { title: "#team-orders", url: "https://chat.internal/channels/team-orders" }
+
+apis:
+  - id: orders-http
+    kind: openapi
+    spec: api/openapi.yaml
+    lifecycle: production
+    tags: [orders, checkout]
+    environments:
+      - { name: staging, url: "https://orders.staging.internal" }
+      - { name: prod, url: "https://orders.prod.internal" }
+
+  - id: orders-events
+    kind: cloudevents
+    spec: api/events.yaml
+    lifecycle: production
+    environments:
+      - { name: staging, broker: kafka-staging }
+      - { name: prod, broker: kafka-prod }
+
+consumes:
+  - api: payments-events
+    types: [com.acme.payments.payment.captured.v1]
+  - api: customers-http

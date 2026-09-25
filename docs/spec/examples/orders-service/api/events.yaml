@@ -1,0 +1,49 @@
+eventcatalog: "1.0"
+title: Order events
+version: 1.4.0
+description: Lifecycle events emitted by the orders service.
+
+defaults:
+  source: /orders-service/{region}
+  datacontenttype: application/json
+  bindings:
+    - kafka:
+        topic: orders.events
+        key: { from: data, pointer: /orderId }
+        mode: binary
+
+messages:
+  - type: com.acme.orders.order.created.v1
+    role: produces
+    summary: An order was placed.
+    description: |
+      Emitted once, after the order is persisted and payment is authorised.
+    subject: orders/{orderId}
+    dataschema: { $ref: ./schemas/order-created.v1.json }
+    extensions:
+      partitionkey: { required: true, type: string, description: Equal to orderId. }
+    examples:
+      - name: minimal
+        data:
+          orderId: ord_123
+          customerId: cus_9
+          total: { amount: 1999, currency: EUR }
+
+  - type: com.acme.orders.order.cancelled.v1
+    role: produces
+    summary: An order was cancelled.
+    subject: orders/{orderId}
+    dataschema:
+      schema:
+        type: object
+        required: [orderId, reason]
+        properties:
+          orderId: { type: string }
+          reason: { enum: [customer_request, payment_failed, out_of_stock] }
+
+  - type: com.acme.orders.order.cancel.requested.v1
+    role: receives
+    summary: Command to cancel an order.
+    dataschema: { $ref: ./schemas/order-cancel-requested.v1.json }
+    bindings:
+      - nats: { subject: orders.commands.cancel, stream: ORDERS_CMD }

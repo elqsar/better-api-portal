@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrderCancelRequested",
+  "type": "object",
+  "required": ["orderId", "requestedBy"],
+  "properties": {
+    "orderId": { "type": "string" },
+    "requestedBy": { "type": "string", "description": "User or service id." },
+    "reason": { "type": "string" }
+  }
+}
