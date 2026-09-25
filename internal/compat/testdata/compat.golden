@@ -1,0 +1,163 @@
+== Add an optional property
+FORWARD   ok
+BACKWARD  ok
+FULL      ok
+== Add an optional property * old side closed
+FORWARD   FORWARD   compat-additional-properties  /b: property b was added, but the old schema doesn't allow additional properties
+BACKWARD  ok
+FULL      FORWARD   compat-additional-properties  /b: property b was added, but the old schema doesn't allow additional properties
+== Add a required property
+FORWARD   ok
+BACKWARD  BACKWARD  compat-required               /b: required property b was added
+FULL      BACKWARD  compat-required               /b: required property b was added
+== Add a required property * old side closed
+FORWARD   FORWARD   compat-additional-properties  /b: property b was added, but the old schema doesn't allow additional properties
+BACKWARD  BACKWARD  compat-required               /b: required property b was added
+FULL      BACKWARD  compat-required               /b: required property b was added
+FULL      FORWARD   compat-additional-properties  /b: property b was added, but the old schema doesn't allow additional properties
+== Remove a property from required
+FORWARD   FORWARD   compat-required               /a: a is no longer required
+BACKWARD  ok
+FULL      FORWARD   compat-required               /a: a is no longer required
+== Remove a property that was optional
+FORWARD   ok
+BACKWARD  ok
+FULL      ok
+== Remove a property that was required
+FORWARD   FORWARD   compat-required               /b: required property b was removed
+BACKWARD  ok
+FULL      FORWARD   compat-required               /b: required property b was removed
+== Remove a property * new side closed
+FORWARD   ok
+BACKWARD  BACKWARD  compat-additional-properties  /b: property b was removed, and the new schema doesn't allow additional properties
+FULL      BACKWARD  compat-additional-properties  /b: property b was removed, and the new schema doesn't allow additional properties
+== Widen an enum
+FORWARD   FORWARD   compat-enum                   (root): enum gained ["c"]
+BACKWARD  ok
+FULL      FORWARD   compat-enum                   (root): enum gained ["c"]
+== Narrow an enum
+FORWARD   ok
+BACKWARD  BACKWARD  compat-enum                   (root): enum lost ["c"]
+FULL      BACKWARD  compat-enum                   (root): enum lost ["c"]
+== Change a type
+FORWARD   FORWARD   compat-type                   /n: type changed from string to integer
+BACKWARD  BACKWARD  compat-type                   /n: type changed from string to integer
+FULL      FULL      compat-type                   /n: type changed from string to integer
+== Tighten a constraint (lower maxLength)
+FORWARD   ok
+BACKWARD  BACKWARD  compat-constraint             (root): maxLength changed from 50 to 20
+FULL      BACKWARD  compat-constraint             (root): maxLength changed from 50 to 20
+== Loosen a constraint (raise maxLength)
+FORWARD   FORWARD   compat-constraint             (root): maxLength changed from 20 to 50
+BACKWARD  ok
+FULL      FORWARD   compat-constraint             (root): maxLength changed from 20 to 50
+== Any change involving keywords outside the subset
+FORWARD   FORWARD   BRK-UNVERIFIED                (root): can't verify a change involving oneOf
+BACKWARD  BACKWARD  BRK-UNVERIFIED                (root): can't verify a change involving oneOf
+FULL      FULL      BRK-UNVERIFIED                (root): can't verify a change involving oneOf
+== integer to number
+FORWARD   FORWARD   compat-type                   (root): type changed from integer to number
+BACKWARD  ok
+FULL      FORWARD   compat-type                   (root): type changed from integer to number
+== number to integer
+FORWARD   ok
+BACKWARD  BACKWARD  compat-type                   (root): type changed from number to integer
+FULL      BACKWARD  compat-type                   (root): type changed from number to integer
+== type becomes nullable
+FORWARD   FORWARD   compat-type                   (root): type changed from string to null|string
+BACKWARD  ok
+FULL      FORWARD   compat-type                   (root): type changed from string to null|string
+== const to enum
+FORWARD   FORWARD   compat-enum                   (root): enum gained ["b"]
+BACKWARD  ok
+FULL      FORWARD   compat-enum                   (root): enum gained ["b"]
+== untyped enum gains a type of the same kind
+FORWARD   ok
+BACKWARD  ok
+FULL      ok
+== enum removed
+FORWARD   FORWARD   compat-enum                   (root): enum ["a"] was removed: any value is now allowed
+BACKWARD  ok
+FULL      FORWARD   compat-enum                   (root): enum ["a"] was removed: any value is now allowed
+== numeric enum values compare by value
+FORWARD   ok
+BACKWARD  ok
+FULL      ok
+== nested items change
+FORWARD   FORWARD   compat-constraint             /lines/[]/quantity: minimum changed from 1 to 0
+BACKWARD  ok
+FULL      FORWARD   compat-constraint             /lines/[]/quantity: minimum changed from 1 to 0
+== items schema removed
+FORWARD   FORWARD   compat-constraint             /[]: the items schema was removed: any item is now allowed
+BACKWARD  ok
+FULL      FORWARD   compat-constraint             /[]: the items schema was removed: any item is now allowed
+== additionalProperties closed in new
+FORWARD   ok
+BACKWARD  BACKWARD  compat-additional-properties  (root): additionalProperties is now restricted
+FULL      BACKWARD  compat-additional-properties  (root): additionalProperties is now restricted
+== additionalProperties schema narrowed
+FORWARD   ok
+BACKWARD  BACKWARD  compat-type                   /*: type changed from integer|string to string
+FULL      BACKWARD  compat-type                   /*: type changed from integer|string to string
+== pattern added
+FORWARD   ok
+BACKWARD  BACKWARD  compat-constraint             (root): pattern changed from none to "^[A-Z]{3}$"
+FULL      BACKWARD  compat-constraint             (root): pattern changed from none to "^[A-Z]{3}$"
+== pattern changed
+FORWARD   FORWARD   compat-constraint             (root): pattern changed from "^[A-Z]{3}$" to "^[A-Z]{2,3}$"
+BACKWARD  BACKWARD  compat-constraint             (root): pattern changed from "^[A-Z]{3}$" to "^[A-Z]{2,3}$"
+FULL      FULL      compat-constraint             (root): pattern changed from "^[A-Z]{3}$" to "^[A-Z]{2,3}$"
+== only annotations change
+FORWARD   ok
+BACKWARD  ok
+FULL      ok
+== unsupported keyword unchanged
+FORWARD   ok
+BACKWARD  ok
+FULL      ok
+== unsupported keyword changed gives one issue
+FORWARD   FORWARD   BRK-UNVERIFIED                /v: can't verify a change involving minItems
+BACKWARD  BACKWARD  BRK-UNVERIFIED                /v: can't verify a change involving minItems
+FULL      FULL      BRK-UNVERIFIED                /v: can't verify a change involving minItems
+== ref with annotation sibling is followed
+FORWARD   FORWARD   compat-type                   (root): type changed from string to integer
+BACKWARD  BACKWARD  compat-type                   (root): type changed from string to integer
+FULL      FULL      compat-type                   (root): type changed from string to integer
+== ref with constraint sibling is unverified
+FORWARD   FORWARD   BRK-UNVERIFIED                (root): can't verify: $ref #/$defs/A has sibling keyword minLength
+BACKWARD  BACKWARD  BRK-UNVERIFIED                (root): can't verify: $ref #/$defs/A has sibling keyword minLength
+FULL      FULL      BRK-UNVERIFIED                (root): can't verify: $ref #/$defs/A has sibling keyword minLength
+== cross-file ref
+FORWARD   FORWARD   compat-type                   /total/amount: type changed from integer to string
+BACKWARD  BACKWARD  compat-type                   /total/amount: type changed from integer to string
+FULL      FULL      compat-type                   /total/amount: type changed from integer to string
+== ref inside an inline schema
+FORWARD   ok
+BACKWARD  BACKWARD  compat-constraint             /c: maxLength changed from none to 3
+BACKWARD  BACKWARD  compat-constraint             /m: minimum changed from none to 0
+FULL      BACKWARD  compat-constraint             /c: maxLength changed from none to 3
+FULL      BACKWARD  compat-constraint             /m: minimum changed from none to 0
+== fragment root
+FORWARD   ok
+BACKWARD  BACKWARD  compat-enum                   (root): enum ["x"] was added: other values are no longer allowed
+FULL      BACKWARD  compat-enum                   (root): enum ["x"] was added: other values are no longer allowed
+== recursive schema
+FORWARD   ok
+BACKWARD  BACKWARD  compat-required               /name: name is now required
+FULL      BACKWARD  compat-required               /name: name is now required
+== ref to a missing definition
+FORWARD   FORWARD   BRK-UNVERIFIED                (root): can't verify: $ref #/$defs/B: /$defs/B not found
+BACKWARD  BACKWARD  BRK-UNVERIFIED                (root): can't verify: $ref #/$defs/B: /$defs/B not found
+FULL      FULL      BRK-UNVERIFIED                (root): can't verify: $ref #/$defs/B: /$defs/B not found
+== true schema to typed
+FORWARD   ok
+BACKWARD  BACKWARD  compat-type                   (root): type changed from any to string
+FULL      BACKWARD  compat-type                   (root): type changed from any to string
+== false schema to anything
+FORWARD   FORWARD   compat-type                   (root): the old schema accepts no value here
+BACKWARD  ok
+FULL      FORWARD   compat-type                   (root): the old schema accepts no value here
+== NONE checks nothing
+FORWARD   FORWARD   compat-type                   (root): type changed from string to integer
+BACKWARD  BACKWARD  compat-type                   (root): type changed from string to integer
+FULL      FULL      compat-type                   (root): type changed from string to integer
