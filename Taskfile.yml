@@ -1,0 +1,41 @@
+version: '3'
+
+silent: true
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the portal binary into bin/
+    sources:
+      - '**/*.go'
+      - docs/spec/schemas/*.json
+      - go.mod
+      - go.sum
+    generates:
+      - bin/portal
+    cmds:
+      - go build -o bin/portal ./cmd/portal
+
+  test:
+    desc: Run unit and golden-file tests
+    cmds:
+      - go test ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  check:examples:
+    desc: Run portal check over every example in docs/spec/examples
+    deps: [build]
+    cmds:
+      - |
+        for f in docs/spec/examples/*/portal.yaml; do
+          echo "== $f"
+          bin/portal check --descriptor "$f" || exit 1
+        done
