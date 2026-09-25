@@ -501,3 +501,48 @@ func TestExampleModified(t *testing.T) {
 		t.Errorf("issues = %q, want %q", got, want)
 	}
 }
+
+func TestFingerprint(t *testing.T) {
+	fp := func(b bundle, annotations bool) string {
+		t.Helper()
+		s, err := Fingerprint(b.schema(t), annotations)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	plain := one(`{"type": "object", "properties": {"a": {"type": "string"}}}`)
+	described := one(`{"type": "object", "description": "d", "properties": {"a": {"type": "string", "title": "A"}}}`)
+	constrained := one(`{"type": "object", "properties": {"a": {"type": "string", "maxLength": 3}}}`)
+	// A property named like an annotation is data, not an annotation.
+	namedDescription := one(`{"type": "object", "properties": {"description": {"type": "string"}}}`)
+
+	if fp(plain, false) != fp(described, false) {
+		t.Error("annotations changed the constraints fingerprint")
+	}
+	if fp(plain, true) == fp(described, true) {
+		t.Error("annotations didn't change the full fingerprint")
+	}
+	if fp(plain, false) == fp(constrained, false) {
+		t.Error("a constraint didn't change the fingerprint")
+	}
+	if !strings.Contains(fp(namedDescription, false), `"description"`) {
+		t.Error("a property named description was dropped")
+	}
+
+	// $refs are inlined, so the same schema split across files matches.
+	split := bundle{files: [][2]string{
+		{"api/s.json", `{"type": "object", "properties": {"a": {"$ref": "./a.json"}}}`},
+		{"api/a.json", `{"type": "string"}`},
+	}}
+	inlined := one(`{"type": "object", "properties": {"a": {"$ref": "#/$defs/A"}}, "$defs": {"A": {"type": "string"}}}`)
+	if fp(split, false) != fp(inlined, false) {
+		t.Errorf("same schema, different layout:\n%s\n%s", fp(split, false), fp(inlined, false))
+	}
+
+	// Recursive schemas terminate.
+	tree := one(`{"$ref": "#/$defs/N", "$defs": {"N": {"type": "object", "properties": {"kids": {"type": "array", "items": {"$ref": "#/$defs/N"}}}}}}`)
+	if !strings.Contains(fp(tree, false), "$cycle") {
+		t.Error("cycle not marked")
+	}
+}

@@ -16,7 +16,7 @@ var supported = set("type", "enum", "const", "required", "properties", "addition
 	"items", "minimum", "maximum", "minLength", "maxLength", "pattern", "format", "$ref")
 
 // annotations never affect which instances are valid.
-var annotations = set("$schema", "$id", "$defs", "definitions", "$comment", "title", "description",
+var annotationKeywords = set("$schema", "$id", "$defs", "definitions", "$comment", "title", "description",
 	"examples", "default", "deprecated", "readOnly", "writeOnly")
 
 func set(ks ...string) map[string]bool {
@@ -31,7 +31,7 @@ func set(ks ...string) map[string]bool {
 func unsupportedKeywords(m map[string]any) []string {
 	var ks []string
 	for k := range m {
-		if !supported[k] && !annotations[k] {
+		if !supported[k] && !annotationKeywords[k] {
 			ks = append(ks, k)
 		}
 	}
@@ -43,7 +43,7 @@ func unsupportedKeywords(m map[string]any) []string {
 func constraints(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		if !annotations[k] {
+		if !annotationKeywords[k] {
 			out[k] = v
 		}
 	}

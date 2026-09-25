@@ -101,7 +101,7 @@ func (d *Descriptor) check(doc *yamldoc.Doc) ([]model.Finding, error) {
 			add("descriptor-spec-path", base+"/spec", msg)
 			continue
 		}
-		kind, f, err := sniff(specPath)
+		kind, f, err := Sniff(specPath)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			add("descriptor-spec-path", base+"/spec", fmt.Sprintf("spec file %s does not exist", api.Spec))

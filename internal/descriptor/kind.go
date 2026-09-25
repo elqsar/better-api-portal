@@ -11,10 +11,10 @@ import (
 	"better-api-portal/internal/yamldoc"
 )
 
-// sniff identifies the kind of a spec file from its top-level version key
+// Sniff identifies the kind of a spec file from its top-level version key
 // (openapi, asyncapi, eventcatalog). It returns "" and a finding when the
 // file is readable but not a supported format.
-func sniff(path string) (Kind, *model.Finding, error) {
+func Sniff(path string) (Kind, *model.Finding, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", nil, err

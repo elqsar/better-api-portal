@@ -167,7 +167,7 @@ func (c *checker) deref(s Schema, n node) (node, error) {
 			return n, nil
 		}
 		for k := range m {
-			if k != "$ref" && !annotations[k] {
+			if k != "$ref" && !annotationKeywords[k] {
 				return n, fmt.Errorf("$ref %s has sibling keyword %s", ref, k)
 			}
 		}
