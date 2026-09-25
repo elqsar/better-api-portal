@@ -8,6 +8,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"better-api-portal/internal/model"
+	"better-api-portal/internal/yamldoc"
 )
 
 // sniff identifies the kind of a spec file from its top-level version key
@@ -25,7 +26,7 @@ func sniff(path string) (Kind, *model.Finding, error) {
 			Severity: model.SeverityError,
 			Message:  "not valid YAML or JSON: " + err.Error(),
 			File:     path,
-			Line:     yamlErrorLine(err),
+			Line:     yamldoc.ErrorLine(err),
 		}, nil
 	}
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {

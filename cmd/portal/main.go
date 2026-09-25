@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"better-api-portal/internal/descriptor"
+	"better-api-portal/internal/check"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/report"
 )
@@ -61,7 +61,7 @@ func checkCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("unknown --format %q (want text or json)", format)
 			}
-			_, findings, err := descriptor.Load(descPath)
+			findings, err := check.Run(descPath)
 			if err != nil {
 				return err
 			}

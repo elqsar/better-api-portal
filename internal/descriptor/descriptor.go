@@ -1,6 +1,8 @@
 // Package descriptor parses and validates portal.yaml (docs/spec/03-formats.md §1).
 package descriptor
 
+import "path/filepath"
+
 // Descriptor is a parsed portal.yaml.
 type Descriptor struct {
 	APIVersion string     `yaml:"apiVersion"`
@@ -14,6 +16,17 @@ type Descriptor struct {
 	// against which spec paths are resolved.
 	Path string `yaml:"-"`
 	Dir  string `yaml:"-"`
+
+	specOK map[int]bool
+}
+
+// SpecOK reports whether apis[i]'s spec file exists and is of its kind, so
+// it can be parsed.
+func (d *Descriptor) SpecOK(i int) bool { return d.specOK[i] }
+
+// SpecPath returns the path of apis[i]'s spec file.
+func (d *Descriptor) SpecPath(i int) string {
+	return filepath.Join(d.Dir, filepath.FromSlash(d.APIs[i].Spec))
 }
 
 // API is one entry of apis[].

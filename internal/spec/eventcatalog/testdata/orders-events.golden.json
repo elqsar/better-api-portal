@@ -1,0 +1,123 @@
+{
+  "kind": "cloudevents",
+  "title": "Order events",
+  "version": "1.4.0",
+  "description": "Lifecycle events emitted by the orders service.",
+  "messages": [
+    {
+      "key": "com.acme.orders.order.created.v1",
+      "role": "produces",
+      "summary": "An order was placed.",
+      "description": "Emitted once, after the order is persisted and payment is authorised.\n",
+      "ce": {
+        "source": "/orders-service/{region}",
+        "subject": "orders/{orderId}",
+        "datacontenttype": "application/json",
+        "extensions": {
+          "partitionkey": {
+            "required": true,
+            "type": "string",
+            "description": "Equal to orderId."
+          }
+        }
+      },
+      "payload": "api/schemas/order-created.v1.json",
+      "bindings": [
+        {
+          "protocol": "kafka",
+          "address": "orders.events",
+          "props": {
+            "key": {
+              "from": "data",
+              "pointer": "/orderId"
+            },
+            "mode": "binary"
+          }
+        }
+      ],
+      "examples": [
+        {
+          "name": "minimal",
+          "data": {
+            "customerId": "cus_9",
+            "orderId": "ord_123",
+            "total": {
+              "amount": 1999,
+              "currency": "EUR"
+            }
+          }
+        }
+      ],
+      "line": 16
+    },
+    {
+      "key": "com.acme.orders.order.cancelled.v1",
+      "role": "produces",
+      "summary": "An order was cancelled.",
+      "ce": {
+        "source": "/orders-service/{region}",
+        "subject": "orders/{orderId}",
+        "datacontenttype": "application/json"
+      },
+      "payload": "api/events.yaml#/messages/1/dataschema/schema",
+      "bindings": [
+        {
+          "protocol": "kafka",
+          "address": "orders.events",
+          "props": {
+            "key": {
+              "from": "data",
+              "pointer": "/orderId"
+            },
+            "mode": "binary"
+          }
+        }
+      ],
+      "line": 32
+    },
+    {
+      "key": "com.acme.orders.order.cancel.requested.v1",
+      "role": "receives",
+      "summary": "Command to cancel an order.",
+      "ce": {
+        "source": "/orders-service/{region}",
+        "datacontenttype": "application/json"
+      },
+      "payload": "api/schemas/order-cancel-requested.v1.json",
+      "bindings": [
+        {
+          "protocol": "nats",
+          "address": "orders.commands.cancel",
+          "props": {
+            "stream": "ORDERS_CMD"
+          }
+        }
+      ],
+      "line": 44
+    }
+  ],
+  "schemas": {
+    "api/events.yaml#/messages/1/dataschema/schema": {
+      "pointer": "api/events.yaml#/messages/1/dataschema/schema",
+      "draft": "2020-12"
+    },
+    "api/schemas/money.json": {
+      "pointer": "api/schemas/money.json",
+      "draft": "2020-12"
+    },
+    "api/schemas/order-cancel-requested.v1.json": {
+      "pointer": "api/schemas/order-cancel-requested.v1.json",
+      "draft": "2020-12"
+    },
+    "api/schemas/order-created.v1.json": {
+      "pointer": "api/schemas/order-created.v1.json",
+      "draft": "2020-12"
+    }
+  },
+  "files": [
+    "api/events.yaml",
+    "api/schemas/money.json",
+    "api/schemas/order-cancel-requested.v1.json",
+    "api/schemas/order-created.v1.json"
+  ]
+}

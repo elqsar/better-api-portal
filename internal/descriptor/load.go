@@ -6,13 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 
-	"go.yaml.in/yaml/v3"
-
 	"better-api-portal/internal/model"
+	"better-api-portal/internal/yamldoc"
 )
 
 // Load reads and validates the descriptor at path. Problems with the
@@ -24,19 +22,26 @@ func Load(path string) (*Descriptor, []model.Finding, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	var root yaml.Node
-	if err := yaml.Unmarshal(b, &root); err != nil {
+	doc, err := yamldoc.Parse(path, b)
+	var se *yamldoc.SyntaxError
+	if errors.As(err, &se) {
 		return nil, []model.Finding{{
 			RuleID:   "descriptor-syntax",
 			Severity: model.SeverityError,
-			Message:  "not valid YAML: " + err.Error(),
+			Message:  "not valid YAML: " + se.Error(),
 			File:     path,
-			Line:     yamlErrorLine(err),
+			Line:     se.Line,
 		}}, nil
 	}
-	lines := indexLines(&root)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	violations, err := validateSchema(toJSON(&root))
+	sch, err := compiled()
+	if err != nil {
+		return nil, nil, err
+	}
+	violations, err := yamldoc.Validate(sch, doc.JSON(), describe)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -46,20 +51,20 @@ func Load(path string) (*Descriptor, []model.Finding, error) {
 			findings[i] = model.Finding{
 				RuleID:   "descriptor-schema",
 				Severity: model.SeverityError,
-				Message:  v.message,
+				Message:  v.Message,
 				File:     path,
-				Pointer:  v.pointer,
-				Line:     lines.lookup(v.pointer),
+				Pointer:  v.Pointer,
+				Line:     doc.Line(v.Pointer),
 			}
 		}
 		return nil, findings, nil
 	}
 
 	d := &Descriptor{Path: path, Dir: filepath.Dir(path)}
-	if err := root.Decode(d); err != nil {
-		return nil, nil, fmt.Errorf("%s: decode after schema validation: %w", path, err)
+	if err := doc.Decode(d); err != nil {
+		return nil, nil, err
 	}
-	findings, err := d.check(lines)
+	findings, err := d.check(doc)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -67,8 +72,9 @@ func Load(path string) (*Descriptor, []model.Finding, error) {
 }
 
 // check runs the rules the JSON Schema can't express.
-func (d *Descriptor) check(lines lines) ([]model.Finding, error) {
+func (d *Descriptor) check(doc *yamldoc.Doc) ([]model.Finding, error) {
 	var findings []model.Finding
+	d.specOK = map[int]bool{}
 	add := func(rule, ptr, msg string) {
 		findings = append(findings, model.Finding{
 			RuleID:   rule,
@@ -76,7 +82,7 @@ func (d *Descriptor) check(lines lines) ([]model.Finding, error) {
 			Message:  msg,
 			File:     d.Path,
 			Pointer:  ptr,
-			Line:     lines.lookup(ptr),
+			Line:     doc.Line(ptr),
 		})
 	}
 
@@ -113,6 +119,8 @@ func (d *Descriptor) check(lines lines) ([]model.Finding, error) {
 		case kind != api.Kind:
 			add("descriptor-kind-mismatch", base+"/kind",
 				fmt.Sprintf("kind is %s, but %s is %s", api.Kind, api.Spec, kind))
+		default:
+			d.specOK[i] = true
 		}
 	}
 	return findings, nil
@@ -133,19 +141,4 @@ func (d *Descriptor) resolveSpec(spec string) (string, string) {
 		return "", fmt.Sprintf("spec %s is a directory, not a file", spec)
 	}
 	return p, ""
-}
-
-var yamlLineRe = regexp.MustCompile(`line (\d+)`)
-
-// yamlErrorLine extracts the line number from a yaml syntax error, or 0.
-func yamlErrorLine(err error) int {
-	var te *yaml.TypeError
-	if errors.As(err, &te) {
-		return 0
-	}
-	if m := yamlLineRe.FindStringSubmatch(err.Error()); m != nil {
-		n, _ := strconv.Atoi(m[1])
-		return n
-	}
-	return 0
 }
