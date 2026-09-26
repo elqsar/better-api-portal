@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `109eb2d`
+Last updated: 2026-09-26 · Last commit: `62b0a3c`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,8 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). Next is **M3: read UI**, whose design is agreed
-(see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** has started: step 1, the index
+behind browsing and search, is done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -41,6 +41,7 @@ specs are available yet.
 | 14 | `b703255` | CI auth: GitHub/GitLab OIDC ID tokens, static tokens, `portal admin token` |
 | 15 | `fe8f1ec` | `portal push`, `check --baseline-from`, `internal/client`, example GitHub Actions workflow |
 | 16 | `109eb2d` | End-to-end test: the CLI against a real portal (publish, retry, reject, ack) |
+| 17 | `62b0a3c` | M3 index: `version_models`, message/operation/binding rows, `dependencies`, `search_docs`, `latest_version_id`; `portal reindex` |
 
 ### J1/J2 against a portal
 ```sh
@@ -73,7 +74,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 | Package | Role |
 |---|---|
-| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `push`, `migrate`, `serve`, `admin token` |
+| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `push`, `migrate`, `reindex`, `serve`, `admin token` |
 | `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
@@ -88,9 +89,10 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL) |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
+| `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
-| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push in one transaction |
+| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `Dependencies`, `Search` (basic) |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
@@ -277,13 +279,33 @@ be changed in M3's first commit to match.
   "semantic" toggle, unchanged regions folded and expanded with htmx.
   Cacheable forever, since both sides are content hashes. Replaces the
   spec's "small embedded JS diff library".
-- **Pages:** `/`, `/search`, `/apis`, `/apis/{id}/v/{semver}` (tabs:
+- **Pages:** `/`, `/search`, `/apis`, `/apis/{id}/versions/{semver}` (tabs:
   overview, docs, versions, lint, dependencies; deprecation banner),
   `/events/{ce-type}` (across APIs), `/apis/{id}/diff?from=&to=`,
   `/teams/{slug}`. `/admin` after M3.
 - **Auth:** OIDC code flow + PKCE, sessions in Postgres, roles from group
   mapping; `/api/v1` reads also accept the session cookie.
-- **Commit order:** (1) migration + indexing + `reindex`; (2) `internal/web`
+- **Index (step 1, done):**
+  - Only published versions are indexed. Rejected ones stay reachable
+    through `versions` and the reports.
+  - `latest_version_id` is the highest release, else the highest
+    pre-release (the push baseline stays release-only).
+  - `dependencies` are per API (its current `consumes` from `apis.meta`),
+    not per version, and may point at APIs not in the portal.
+  - Search documents: one per API, operation, message and schema.
+    `terms` (identifiers split by `index.Words`, weight A) and `body`
+    (summaries, descriptions, schema property names, titles and enum
+    values, weight B, capped at 32 KB) both use the `english` config, so
+    "refunds" stems to "refund". Schema examples and defaults aren't
+    indexed.
+  - `check.ParseBundle` re-parses a stored bundle into exactly the model
+    the push stored (tested), which is what `portal reindex` uses.
+  - Descriptor links, environments and consumes got lower-case JSON tags.
+    Rows pushed before that keep `{"API": …}` in `apis.meta` until their
+    next push; `reindex` doesn't rewrite `meta`.
+  - The page URL is `/apis/{id}/versions/{v}`, as `push` already prints,
+    not `/v/`.
+- **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
   skeleton + login; (3) API list/page; (4) Scalar docs; (5) event page;
   (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
   tests with golden HTML.
@@ -331,11 +353,10 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". The
-first step is the migration (`version_models`, `messages`, `operations`,
-`bindings`, `dependencies`, `search_docs` + `pg_trgm`), indexing in
-`store.Record`, and `portal reindex`; update 05-architecture's Storage table
-and Web UI section in the same commit.
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Step 1
+(the index) is done. Next is step 2: `internal/web`, with the layout,
+embedded static files, routing, OIDC login with Postgres sessions, and the
+dev stub provider for `task run`.
 
 ## Known gaps
 
@@ -352,7 +373,8 @@ and Web UI section in the same commit.
 - `portal diff` doesn't take bundles yet, only spec files.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented yet: `ce-type-unique` and
-  `ce-topic-single-owner` (they need the model rows, M3).
+  `ce-topic-single-owner`. The rows they need (`messages`, `bindings`) exist
+  now.
 - Rejected versions aren't cleaned up after 30 days yet (needs the jobs
   table).
 - There are no rulesets from files, no severity overrides and no
