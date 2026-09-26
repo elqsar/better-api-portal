@@ -5,6 +5,7 @@ package check
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -31,8 +32,23 @@ type Options struct {
 	// "api-id=bundle.tar.zst" for single APIs, which take precedence. None
 	// skips the diff.
 	Baselines []string
+	// BaselineBundles are per-API baselines already in memory, as the server
+	// has them. An id may not also have a bundle in Baselines.
+	BaselineBundles map[string]Baseline
 	// Acks maps breaking-change ids to the reason they are acknowledged.
 	Acks map[string]string
+
+	// workDir is where baseline bundles are unpacked; empty means the system
+	// temporary directory.
+	workDir string
+}
+
+// Baseline is an API's previous version as a bundle.
+type Baseline struct {
+	Bundle *bundle.Bundle
+	// Lifecycle is the previous version's lifecycle, if known; a bundle
+	// doesn't carry it, and without it lifecycle-reversal isn't checked.
+	Lifecycle string
 }
 
 // Report is the outcome of a check.
@@ -66,7 +82,7 @@ func Run(descPath string, opts Options) (*Report, error) {
 	if d == nil {
 		return r, nil
 	}
-	base, err := loadBaselines(opts.Baselines, d)
+	base, err := loadBaselines(opts, d)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +174,7 @@ type baselines struct {
 	desc    *descriptor.Descriptor
 	bundles map[string]baseSpec // by API id
 	tmp     string              // where bundles are unpacked; removed by close
+	workDir string              // where tmp is created; "" for the system default
 }
 
 // baseSpec is an API's previous version on disk.
@@ -167,11 +184,12 @@ type baseSpec struct {
 	Lifecycle  string // unknown ("") for bundles, which carry no metadata
 }
 
-// loadBaselines reads the --baseline arguments. Bundles are unpacked into a
-// temporary directory, since the parsers read from disk.
-func loadBaselines(args []string, d *descriptor.Descriptor) (*baselines, error) {
-	b := &baselines{bundles: map[string]baseSpec{}}
-	for _, arg := range args {
+// loadBaselines reads the --baseline arguments and the in-memory baselines.
+// Bundles are unpacked into a temporary directory, since the parsers read from
+// disk.
+func loadBaselines(opts Options, d *descriptor.Descriptor) (*baselines, error) {
+	b := &baselines{bundles: map[string]baseSpec{}, workDir: opts.workDir}
+	for _, arg := range opts.Baselines {
 		id, file, isBundle := strings.Cut(arg, "=")
 		if _, err := os.Stat(arg); err == nil || id == "" || strings.ContainsAny(id, `/\`) {
 			isBundle = false // a path that happens to contain "="
@@ -193,34 +211,54 @@ func loadBaselines(args []string, d *descriptor.Descriptor) (*baselines, error) 
 			b.desc = desc
 			continue
 		}
-		spec, err := b.unpack(id, file, d)
+		bun, err := readBundle(file)
+		if err == nil {
+			err = b.add(id, Baseline{Bundle: bun}, d)
+		}
 		if err != nil {
 			b.close()
 			return nil, fmt.Errorf("baseline %s: %w", arg, err)
 		}
-		b.bundles[id] = spec
+	}
+	for _, id := range slices.Sorted(maps.Keys(opts.BaselineBundles)) {
+		if err := b.add(id, opts.BaselineBundles[id], d); err != nil {
+			b.close()
+			return nil, fmt.Errorf("baseline of %s: %w", id, err)
+		}
 	}
 	return b, nil
 }
 
-func (b *baselines) unpack(id, file string, d *descriptor.Descriptor) (baseSpec, error) {
-	if _, dup := b.bundles[id]; dup {
-		return baseSpec{}, fmt.Errorf("%s has more than one baseline bundle", id)
-	}
-	if !slices.ContainsFunc(d.APIs, func(a descriptor.API) bool { return a.ID == id }) {
-		return baseSpec{}, fmt.Errorf("%s is not an API in %s", id, d.Path)
-	}
+func readBundle(file string) (*bundle.Bundle, error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return baseSpec{}, err
+		return nil, err
 	}
 	defer f.Close()
-	bun, err := bundle.Unpack(f)
-	if err != nil {
-		return baseSpec{}, err
+	return bundle.Unpack(f)
+}
+
+// add unpacks the baseline of API id.
+func (b *baselines) add(id string, base Baseline, d *descriptor.Descriptor) error {
+	if _, dup := b.bundles[id]; dup {
+		return fmt.Errorf("%s has more than one baseline bundle", id)
 	}
+	if !slices.ContainsFunc(d.APIs, func(a descriptor.API) bool { return a.ID == id }) {
+		return fmt.Errorf("%s is not an API in %s", id, d.Path)
+	}
+	spec, err := b.unpack(id, base.Bundle)
+	if err != nil {
+		return err
+	}
+	spec.Lifecycle = base.Lifecycle
+	b.bundles[id] = spec
+	return nil
+}
+
+func (b *baselines) unpack(id string, bun *bundle.Bundle) (baseSpec, error) {
 	if b.tmp == "" {
-		if b.tmp, err = os.MkdirTemp("", "portal-baseline-"); err != nil {
+		var err error
+		if b.tmp, err = os.MkdirTemp(b.workDir, "portal-baseline-"); err != nil {
 			return baseSpec{}, err
 		}
 	}
