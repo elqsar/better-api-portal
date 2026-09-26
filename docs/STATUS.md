@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `58137c5`
+Last updated: 2026-09-26 · Last commit: `bb9627a`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -51,7 +51,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 | Package | Role |
 |---|---|
-| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle` |
+| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `migrate`, `serve` |
 | `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
@@ -64,12 +64,15 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/diff` | `Events` contract diff, `OpenAPI` (oasdiff adapter) |
 | `internal/policy` | Semver gate, lifecycle, pre-releases, acks |
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
-| `internal/config` | Minimal `portal.config.yaml` (org prefix, teams) |
+| `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL) |
+| `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
 | `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push in one transaction |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
-`task psql`, `task test:integration`; `task dev:db:down` wipes it.
+`task psql`, `task run` (serve on :8080), `task test:integration`
+(store and httpapi, one cloned database per test); `task dev:db:down` wipes
+it.
 Golden files are regenerated with `go test ./<pkg> -update` (eventcatalog,
 openapi, compat).
 
@@ -138,6 +141,43 @@ openapi, compat).
   previous lifecycle, so `lifecycle-reversal` works against the store, unlike
   bundle files. An id can't have a baseline both there and in `--baseline`.
 
+## Decisions (server)
+
+- **Push request:** multipart, with parts `descriptor`, `bundle:<api-id>`
+  (tar.zst) and optional `acks` (JSON object, id → non-empty reason). Limits:
+  64 MB per request, 1 MB for the descriptor, and the bundle limits.
+- **Push response:** always 200 once processed, with the
+  `portal check --format json` shape plus `status` and `url` per API.
+  Statuses:
+  - `published`, `unchanged` (the same version and hash, e.g. a CI retry),
+    `rejected`, `skipped` (AsyncAPI);
+  - `accepted`, from `/check` only.
+  - 400 for a malformed push, 401 for an unauthenticated one, 413 for one
+    that is too large.
+- **Claims** follow 03-formats: only a *successful* push claims an id.
+  - A rejected first push stores nothing, so another repo can still take the
+    id.
+  - A rejected push to an API this repo already owns is stored as
+    `rejected`.
+  - A push to another repo's API gets an `api-claimed` error, which is
+    audited as `push.claim-rejected`.
+- The **baseline** is the store's latest published non-pre-release version,
+  with the API's current lifecycle.
+- **A published semver with a different hash** is a `version-immutable`
+  error, and nothing is stored.
+- A version that was published once always answers a push of the same hash
+  with `unchanged`, even if the rules have changed since.
+- A descriptor-level error (API `""`) rejects every API in the push.
+- **New rules:**
+  - `descriptor-owner-unknown` (error): the owner isn't a team in the
+    configuration. It's checked by `check --config` too, and skipped when the
+    configuration has no teams.
+  - `consumes-unknown-api` (warn): server only, and APIs in the same push
+    count as known.
+- **The bundle download** carries `X-Portal-Version`,
+  `X-Portal-Content-Hash` and `X-Portal-Lifecycle`, so a check can use it as
+  a baseline. It needs the same authentication as push, for now.
+
 ## Decisions (store)
 
 - **Tables in M2** are only what push and the gate need: teams, repos, apis,
@@ -147,10 +187,10 @@ openapi, compat).
 - **Immutability** is a partial unique index on `(api_id, semver)` for
   published versions only, so a rejected push can be fixed and retried
   under the same version.
-- **Claims** are made by the push's own insert of the `apis` row
+- **Claims** are made by a published push's own insert of the `apis` row
   (`ON CONFLICT … WHERE repo_id matches`), so a claim race can't give an id
-  two owners. A rejected push still claims and creates the row (versions
-  need it), but only a published push updates the metadata.
+  two owners. A rejected push claims nothing (`ErrUnclaimed` if the API
+  doesn't exist) and changes no metadata.
 - **Latest** is chosen by semver in Go (`x/mod/semver`), not by insertion
   order.
 - pgx + goose cost 6.8 MB (87.4 → 94.2 MB) and 8 linked modules (76 → 84).
@@ -184,9 +224,8 @@ Q1 default):
 1. ~~`internal/store`~~ done: pgx + goose, `portal migrate`, `task dev:db`.
 2. ~~`internal/check` over in-memory bundles~~ done: `RunBundles`,
    `Options.BaselineBundles`.
-3. `portal serve` + `POST /api/v1/push` and `/check`, `GET …/bundle`, with
-   auth behind an interface: idempotency, immutability, a baseline from the
-   store, one transaction per API.
+3. ~~`portal serve` + push, check, bundle download~~ done; auth is
+   `httpapi.NoAuth` (every push gets 401) until step 4.
 4. `internal/auth`: GitHub Actions OIDC (`ci.trustedIssuers`, `allowedRefs`),
    claims, fallback static tokens (`portal admin token create`).
 5. `portal push` (ID token or `PORTAL_TOKEN`), `check --baseline-from URL`, a
@@ -200,9 +239,10 @@ Q1 default):
   to company specs; scheduled for M5.
 - `portal diff` doesn't take bundles yet, only spec files.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
-- Rules that need the server aren't implemented: `ce-type-unique`,
-  `ce-topic-single-owner`, owner-team existence, and unknown `consumes`
-  ids.
+- Rules that need the server aren't implemented yet: `ce-type-unique` and
+  `ce-topic-single-owner` (they need the model rows, M3).
+- Rejected versions aren't cleaned up after 30 days yet (needs the jobs
+  table).
 - There are no rulesets from files, no severity overrides and no
   `warn-until` (M5).
 - OpenAPI changes carry no `Field`: oasdiff's arguments aren't parsed into
