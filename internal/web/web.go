@@ -5,6 +5,7 @@ package web
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -48,6 +49,7 @@ type Store interface {
 	Model(ctx context.Context, versionID int64) (*model.Spec, error)
 	Report(ctx context.Context, versionID int64) (*store.Report, error)
 	Dependencies(ctx context.Context, apiID string) (consumes, consumers []store.Dependency, err error)
+	Bundle(ctx context.Context, contentHash string) ([]byte, error)
 }
 
 // Options configure a Server.
@@ -73,10 +75,13 @@ type Server struct {
 
 	mu       sync.Mutex
 	provider *oidcProvider
+
+	docs docCache
 }
 
 type staticFile struct {
 	data  []byte
+	gz    []byte // gzipped, if that is smaller
 	ctype string
 	hash  string
 }
@@ -105,7 +110,15 @@ func New(o Options) (*Server, error) {
 		}
 		sum := sha256.Sum256(b)
 		name := strings.TrimPrefix(p, "static/")
-		s.static[name] = staticFile{data: b, ctype: mime.TypeByExtension(path.Ext(name)), hash: hex.EncodeToString(sum[:6])}
+		f := staticFile{data: b, ctype: mime.TypeByExtension(path.Ext(name)), hash: hex.EncodeToString(sum[:6])}
+		var gz bytes.Buffer
+		zw, _ := gzip.NewWriterLevel(&gz, gzip.BestCompression)
+		zw.Write(b)
+		zw.Close()
+		if gz.Len() < len(b)*9/10 {
+			f.gz = gz.Bytes()
+		}
+		s.static[name] = f
 		return nil
 	})
 	if err != nil {
@@ -176,6 +189,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /apis/{id}/versions", s.authed(s.apiVersions))
 	mux.Handle("GET /apis/{id}/versions/{version}", s.authed(s.apiOverview))
 	mux.Handle("GET /apis/{id}/versions/{version}/lint", s.authed(s.apiLint))
+	mux.Handle("GET /apis/{id}/versions/{version}/docs", s.authed(s.apiDocs))
+	mux.Handle("GET /apis/{id}/versions/{version}/openapi.json", s.authed(s.openAPIDocument))
 	mux.Handle("/", s.authed(func(w http.ResponseWriter, r *http.Request, u *User) {
 		s.error(w, r, u, http.StatusNotFound, "Not found", "There is no page at "+r.URL.Path+".")
 	}))
@@ -187,12 +202,18 @@ func (s *Server) Handler() http.Handler {
 func securityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "+
-			"object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		hd.Set("Content-Security-Policy", csp())
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "same-origin")
 		h.ServeHTTP(w, r)
 	})
+}
+
+// csp is the Content-Security-Policy, with extra style sources for pages
+// that need them.
+func csp(styleSrc ...string) string {
+	return "default-src 'self'; script-src 'self'; style-src " + strings.Join(append([]string{"'self'"}, styleSrc...), " ") +
+		"; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 }
 
 // sameOrigin refuses state-changing requests from other sites. The
@@ -223,6 +244,7 @@ func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	h := w.Header()
 	h.Set("Content-Type", f.ctype)
+	h.Set("Vary", "Accept-Encoding")
 	if r.URL.Query().Get("v") == f.hash {
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
@@ -233,7 +255,22 @@ func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if f.gz != nil && acceptsGzip(r) {
+		h.Set("Content-Encoding", "gzip")
+		w.Write(f.gz)
+		return
+	}
 	w.Write(f.data)
+}
+
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		enc, q, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if strings.TrimSpace(enc) == "gzip" && strings.TrimSpace(q) != "q=0" {
+			return true
+		}
+	}
+	return false
 }
 
 // page is what every template gets.
@@ -243,6 +280,10 @@ type page struct {
 	Nav   string // the current top-level section
 	User  *User
 	Data  any
+	// Wide pages use the whole window.
+	Wide bool
+	// StyleNonce lets a script-injected stylesheet through the CSP (Scalar's).
+	StyleNonce string
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name string, p page) {

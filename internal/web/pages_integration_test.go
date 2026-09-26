@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -260,4 +261,48 @@ func TestAPIHistory(t *testing.T) {
 	contains(t, "lint with baseline", body, `Compared with <a href="/apis/orders-http/versions/2.3.0">2.3.0</a>`)
 	_, body, _ = s.get(other, "/apis?lifecycle=deprecated")
 	contains(t, "deprecated filter", body, "orders-http", "sunset 2027-03-31")
+}
+
+func TestDocs(t *testing.T) {
+	s := newSite(t)
+	s.push()
+	c := s.browser()
+
+	code, body, h := s.get(c, "/apis/orders-http/versions/2.3.0/docs")
+	if code != 200 {
+		t.Fatalf("docs: %d", code)
+	}
+	contains(t, "docs", body, `data-url="/apis/orders-http/versions/2.3.0/openapi.json"`, "/static/scalar.js?v=", "/static/docs.js?v=",
+		`aria-current="page">Docs</a>`)
+	// Scalar's stylesheet gets through by the page's nonce, and only it.
+	m := regexp.MustCompile(`<meta property="csp-nonce" content="([^"]+)">`).FindStringSubmatch(body)
+	if m == nil || !strings.Contains(h.Get("Content-Security-Policy"), "style-src 'self' 'nonce-"+m[1]+"'") ||
+		!strings.Contains(h.Get("Content-Security-Policy"), "script-src 'self';") {
+		t.Errorf("nonce %v, CSP %q", m, h.Get("Content-Security-Policy"))
+	}
+	if _, other, _ := s.get(c, "/apis/orders-http/versions/2.3.0"); strings.Contains(other, "csp-nonce") {
+		t.Error("a page without Scalar has a style nonce")
+	}
+
+	code, doc, h := s.get(c, "/apis/orders-http/versions/2.3.0/openapi.json")
+	if code != 200 || h.Get("Content-Type") != "application/json" || !strings.Contains(doc, `"openapi":"3.1.0"`) ||
+		!strings.Contains(doc, `"/orders/{orderId}/cancellation"`) {
+		t.Fatalf("document: %d %s\n%s", code, h.Get("Content-Type"), doc)
+	}
+	if code, _, _ := s.get(c, "/apis/orders-http/versions/2.3.0/openapi.json", "If-None-Match", h.Get("ETag")); code != http.StatusNotModified {
+		t.Errorf("revalidation: %d", code)
+	}
+	for path, want := range map[string]int{
+		"/apis/orders-events/versions/1.4.0/docs":         404,
+		"/apis/orders-events/versions/1.4.0/openapi.json": 404,
+	} {
+		if code, _, _ := s.get(c, path); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
+	}
+	// Without a session the document isn't served, and a fetch isn't sent
+	// to sign in.
+	if code, _, _ := s.get(http.DefaultClient, "/apis/orders-http/versions/2.3.0/openapi.json", "Sec-Fetch-Dest", "empty"); code != 401 {
+		t.Errorf("anonymous document: %d", code)
+	}
 }

@@ -1,0 +1,8 @@
+Third-party files served by the portal's web UI.
+
+htmx.min.js   htmx 2.0.11, https://htmx.org
+              BSD Zero Clause License (0BSD)
+
+scalar.js     @scalar/api-reference 1.72.1, dist/browser/standalone.js,
+              https://github.com/scalar/scalar
+              MIT License, Copyright (c) 2023-present Scalar

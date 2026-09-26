@@ -29,6 +29,7 @@
      hx-target="#api-body" hx-swap="outerHTML" hx-push-url="true">
   {{with $v}}
   <a href="/apis/{{$a.ID}}/versions/{{.Semver}}" hx-get="/apis/{{$a.ID}}/versions/{{.Semver}}" {{if eq $.Data.Tab "overview"}}aria-current="page"{{end}}>Overview</a>
+  {{if eq $a.Kind "openapi"}}<a href="/apis/{{$a.ID}}/versions/{{.Semver}}/docs" hx-boost="false" {{if eq $.Data.Tab "docs"}}aria-current="page"{{end}}>Docs</a>{{end}}
   <a href="/apis/{{$a.ID}}/versions/{{.Semver}}/lint" hx-get="/apis/{{$a.ID}}/versions/{{.Semver}}/lint" {{if eq $.Data.Tab "lint"}}aria-current="page"{{end}}>Lint &amp; changes</a>
   {{end}}
   <a href="/apis/{{$a.ID}}/versions" hx-get="/apis/{{$a.ID}}/versions" {{if eq .Data.Tab "versions"}}aria-current="page"{{end}}>Versions</a>
@@ -36,6 +37,7 @@
 <div class="tab-panel">
 {{if eq .Data.Tab "overview"}}{{template "tab-overview" .}}
 {{else if eq .Data.Tab "lint"}}{{template "tab-lint" .}}
+{{else if eq .Data.Tab "docs"}}{{template "tab-docs" .}}
 {{else}}{{template "tab-versions" .}}{{end}}
 </div>
 </div>
@@ -115,6 +117,14 @@
     {{with $a.Tags}}<div class="tags">{{range .}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
   </aside>
 </div>
+{{end}}
+
+{{define "tab-docs"}}
+<noscript><p>The reference docs need JavaScript. The <a href="/apis/{{.Data.API.ID}}/versions/{{.Data.Version.Semver}}/openapi.json">OpenAPI document</a> is available as JSON.</p></noscript>
+{{/* Empty: Scalar hydrates instead of mounting into an element with children. */}}
+<div id="api-docs" class="api-docs" data-url="/apis/{{.Data.API.ID}}/versions/{{.Data.Version.Semver}}/openapi.json"></div>
+<script src="{{static "scalar.js"}}" defer></script>
+<script src="{{static "docs.js"}}" defer></script>
 {{end}}
 
 {{define "tab-lint"}}

@@ -233,6 +233,16 @@ func TestSecurityHeadersAndStatic(t *testing.T) {
 	if resp.Header.Get("Cache-Control") != "public, max-age=31536000, immutable" || resp.Header.Get("Content-Type") != "text/css; charset=utf-8" {
 		t.Errorf("versioned static: %v", resp.Header)
 	}
+	req, _ := http.NewRequest("GET", srv.URL+"/static/scalar.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	gz, err := (&http.Transport{DisableCompression: true}).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz.Body.Close()
+	if gz.Header.Get("Content-Encoding") != "gzip" || gz.ContentLength > int64(len(s.static["scalar.js"].data)/2) {
+		t.Errorf("scalar.js: %v, %d bytes", gz.Header, gz.ContentLength)
+	}
 	if resp, _ := get(t, c, srv.URL+"/static/app.css"); resp.Header.Get("Cache-Control") != "no-cache" {
 		t.Errorf("unversioned static: %v", resp.Header)
 	}
