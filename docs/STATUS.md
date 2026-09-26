@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `b703255`
+Last updated: 2026-09-26 · Last commit: `109eb2d`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -13,9 +13,12 @@ the compat table) is met. Event catalogues and OpenAPI both get the full
 pipeline: parse, lint, diff against `--baseline`, then the semver gate. Specs
 are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 
-**M2: registry + push** is in progress: the store, the in-memory check and
-the push API and CI authentication (steps 1–4) are done. Then comes
-**M3: read UI**, whose design is agreed (see "Decisions (M3 UI)"). Tuning
+**M2: registry + push** is code-complete: store, push API, CI auth,
+`portal push`, `check --baseline-from`, an example workflow, and an
+end-to-end test of the CLI against a real portal. Its "done when" (a pilot
+service pushing from CI) still needs a deployed portal and a way to ship
+the CLI (see "Known gaps"). Next is **M3: read UI**, whose design is agreed
+(see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -36,8 +39,21 @@ specs are available yet.
 | 12 | `515dd72` | `check.RunBundles`: check an uploaded descriptor + bundles in memory |
 | 13 | `e7073ff` | `portal serve`: push, check (dry run), bundle download |
 | 14 | `b703255` | CI auth: GitHub/GitLab OIDC ID tokens, static tokens, `portal admin token` |
+| 15 | `fe8f1ec` | `portal push`, `check --baseline-from`, `internal/client`, example GitHub Actions workflow |
+| 16 | `109eb2d` | End-to-end test: the CLI against a real portal (publish, retry, reject, ack) |
 
-### J2, today (events and OpenAPI)
+### J1/J2 against a portal
+```sh
+export PORTAL_URL=https://api-portal.internal
+# credentials: PORTAL_TOKEN (static or ID token), or GitHub Actions' ID token
+portal check --baseline-from "$PORTAL_URL"   # diff against the latest published versions
+portal push --dry-run                         # the portal's own verdict, nothing stored
+portal push --output sarif=portal.sarif       # publish; exit 1 if any API is rejected
+portal push --ack BRK-OA-29783f --ack-reason "why it is safe"
+```
+Example workflow: `docs/spec/examples/ci/github-actions.yml`.
+
+### J2, offline (events and OpenAPI)
 ```sh
 git worktree add ../base main
 portal check --config portal.config.yaml --baseline ../base/portal.yaml
@@ -57,7 +73,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 | Package | Role |
 |---|---|
-| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `migrate`, `serve` |
+| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `push`, `migrate`, `serve`, `admin token` |
 | `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
@@ -72,13 +88,14 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL) |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
+| `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
 | `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push in one transaction |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
 `task psql`, `task run` (serve on :8080), `task test:integration`
-(store and httpapi, one cloned database per test); `task dev:db:down` wipes
+(store, httpapi and the CLI end to end, one cloned database per test); `task dev:db:down` wipes
 it.
 Golden files are regenerated with `go test ./<pkg> -update` (eventcatalog,
 openapi, compat).
@@ -214,6 +231,27 @@ openapi, compat).
 - go-oidc, go-jose and oauth2 are 3 new modules; the binary grows about
   1.5 MB (94.2 → 95.7 MB).
 
+## Decisions (push client)
+
+- **PR jobs use `push --dry-run`** in the example workflow, not
+  `check --baseline-from`: it's the server's exact verdict, org rules
+  included (`descriptor-owner-unknown` needs the config the service repo
+  doesn't have). `check --baseline-from` is for local runs and J2's
+  "offline apart from one fetch".
+- **Credentials:** `PORTAL_TOKEN` wins, sent as is (so GitLab's `id_tokens`
+  named `PORTAL_TOKEN` just works); else GitHub Actions' ID token for
+  `--audience`. The run headers (`X-Portal-Ref`, …) are sent with static
+  tokens only.
+- **Retries:** network errors and 5xx, three times (1s, 2s, 4s); 4xx never.
+  A 401 message hints at `id-token: write` / `PORTAL_TOKEN`.
+- **Local failures first:** a descriptor or `$ref` closure with errors is
+  reported without contacting the portal (exit 1).
+- **Paths:** the server's descriptor-relative paths are joined with the
+  descriptor's directory, so text and SARIF match `check`'s; the JSON output
+  is the push response, with status and URL per API.
+- `--baseline-from` skips AsyncAPI APIs, logs each baseline to stderr, and
+  verifies the bundle against `X-Portal-Content-Hash`.
+
 ## Decisions (M3 UI)
 
 Agreed 2026-09-26; 05-architecture's Storage table and Web UI section are to
@@ -290,27 +328,27 @@ be changed in M3's first commit to match.
 
 ## Next steps
 
-**M2**, one commit per step (CI auth targets GitHub Actions first, per the
-Q1 default):
+**M2** is code-complete (table rows 11–16). What remains is operational:
+deploy a portal and have a pilot service push from CI.
 
-1. ~~`internal/store`~~ done: pgx + goose, `portal migrate`, `task dev:db`.
-2. ~~`internal/check` over in-memory bundles~~ done: `RunBundles`,
-   `Options.BaselineBundles`.
-3. ~~`portal serve` + push, check, bundle download~~ done.
-4. ~~`internal/auth`~~ done:
-   OIDC ID tokens (GitHub, GitLab), `allowedRefs`, static tokens,
-   `portal admin token create|list|revoke`.
-5. `portal push` (ID token or `PORTAL_TOKEN`), `check --baseline-from URL`, a
-   GitHub Actions example workflow.
-6. End-to-end test: publish, then reject a breaking change, then a no-op
-   retry.
-
-Then **M3**, in the order under "Decisions (M3 UI)".
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". The
+first step is the migration (`version_models`, `messages`, `operations`,
+`bindings`, `dependencies`, `search_docs` + `pg_trgm`), indexing in
+`store.Record`, and `portal reindex`; update 05-architecture's Storage table
+and Web UI section in the same commit.
 
 ## Known gaps
 
 - Real-spec tuning (Q7: `oneOf` usage, Q6: type prefix) is pending access
   to company specs; scheduled for M5.
+- **CLI distribution:** there's no release, image or download for the
+  `portal` binary; the example workflow installs it from a placeholder
+  `vars.PORTAL_CLI_URL`. The module path (`better-api-portal`) isn't
+  `go install`-able either. The image and Helm chart are M5.
+- The GitHub OIDC path is tested against a fake issuer only, not a real
+  Actions run. Pull requests from forks get no ID token, so they can't use
+  `--dry-run` or `--baseline-from`.
+- `server.publicURL` unset means push results carry paths, not URLs.
 - `portal diff` doesn't take bundles yet, only spec files.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented yet: `ce-type-unique` and
