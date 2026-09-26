@@ -190,13 +190,8 @@ func TestRunBaseline(t *testing.T) {
 		if errs := errorsOf(r); len(errs) > 0 || len(eventsAPI(t, r).Changes) > 0 {
 			t.Errorf("errors = %v, changes = %+v", errs, eventsAPI(t, r).Changes)
 		}
-		// OpenAPI isn't diffed yet, and says so.
-		var noted bool
-		for _, f := range r.Findings {
-			noted = noted || (f.API == "orders-http" && f.RuleID == "diff-unsupported" && f.Severity == model.SeverityInfo)
-		}
-		if !noted {
-			t.Error("no diff-unsupported note for orders-http")
+		if a := httpAPI(t, r); a.BaselineVersion != "2.3.0" || len(a.Changes) > 0 {
+			t.Errorf("http api = %+v", a)
 		}
 	})
 
@@ -220,6 +215,90 @@ func TestRunBaseline(t *testing.T) {
 			t.Errorf("err = %v", err)
 		}
 	})
+}
+
+var dropOutOfStock = [2]string{"enum: [customer_request, payment_failed, out_of_stock]", "enum: [customer_request, payment_failed]"}
+
+func TestRunBaselineOpenAPI(t *testing.T) {
+	const spec = "api/openapi.yaml"
+
+	t.Run("breaking change on a minor bump", func(t *testing.T) {
+		base, head := baselinePair(t, map[string][2]string{spec: dropOutOfStock})
+		// Two edits to one file: apply the bump on top.
+		bump(t, head, spec, "version: 2.3.0", "version: 2.4.0")
+		r, err := Run(head, Options{Baseline: base})
+		if err != nil {
+			t.Fatal(err)
+		}
+		errs := errorsOf(r)
+		if len(errs) != 1 || !strings.HasPrefix(errs[0], "request-property-enum-value-removed BRK-OA-") {
+			t.Fatalf("errors = %v", errs)
+		}
+		a := httpAPI(t, r)
+		if a.BaselineVersion != "2.3.0" || a.Version != "2.4.0" || len(a.Changes) != 1 {
+			t.Errorf("api = %+v", a)
+		}
+
+		id := strings.TrimPrefix(errs[0], "request-property-enum-value-removed ")
+		r, err = Run(head, Options{Baseline: base, Acks: map[string]string{id: "nobody sends out_of_stock"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs := errorsOf(r); len(errs) > 0 {
+			t.Errorf("errors after ack = %v", errs)
+		}
+	})
+
+	t.Run("breaking change on a major bump", func(t *testing.T) {
+		base, head := baselinePair(t, map[string][2]string{spec: dropOutOfStock})
+		bump(t, head, spec, "version: 2.3.0", "version: 3.0.0")
+		r, err := Run(head, Options{Baseline: base})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs := errorsOf(r); len(errs) > 0 {
+			t.Errorf("errors = %v", errs)
+		}
+	})
+
+	t.Run("content changed without a version bump", func(t *testing.T) {
+		base, head := baselinePair(t, map[string][2]string{spec: {"summary: Get an order", "summary: Fetch an order"}})
+		r, err := Run(head, Options{Baseline: base})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs := errorsOf(r); !slices.Equal(errs, []string{"semver-unchanged"}) {
+			t.Errorf("errors = %v", errs)
+		}
+	})
+}
+
+// bump applies a further edit to a file in head's directory.
+func bump(t *testing.T, head, name, old, new string) {
+	t.Helper()
+	p := filepath.Join(filepath.Dir(head), name)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := strings.Replace(string(b), old, new, 1)
+	if s == string(b) {
+		t.Fatalf("%s: %q not found", name, old)
+	}
+	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func httpAPI(t *testing.T, r *Report) APIResult {
+	t.Helper()
+	for _, a := range r.APIs {
+		if a.ID == "orders-http" {
+			return a
+		}
+	}
+	t.Fatalf("no HTTP API in %+v", r.APIs)
+	return APIResult{}
 }
 
 func TestRunKindChanged(t *testing.T) {
@@ -261,7 +340,17 @@ func TestDiffFiles(t *testing.T) {
 		t.Errorf("changes = %+v", changes)
 	}
 	if _, _, err := DiffFiles(filepath.Join(example, "api/openapi.yaml"), newP, ""); err == nil ||
-		!strings.Contains(err.Error(), "not supported yet") {
-		t.Errorf("openapi diff err = %v", err)
+		!strings.Contains(err.Error(), "same kind") {
+		t.Errorf("mixed-kind diff err = %v", err)
+	}
+
+	base, head = baselinePair(t, map[string][2]string{"api/openapi.yaml": dropOutOfStock})
+	changes, fs, err = DiffFiles(filepath.Join(filepath.Dir(base), "api/openapi.yaml"),
+		filepath.Join(filepath.Dir(head), "api/openapi.yaml"), "")
+	if err != nil || len(fs) > 0 {
+		t.Fatalf("err = %v, findings = %+v", err, fs)
+	}
+	if len(changes) != 1 || changes[0].Impact != model.ImpactBreaking {
+		t.Errorf("openapi changes = %+v", changes)
 	}
 }

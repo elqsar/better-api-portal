@@ -97,7 +97,7 @@ For a pushed version *V*, the baseline is the **highest published, non-pre-relea
 - The first version has no baseline, so there's no diff.
 
 ### OpenAPI
-Use **oasdiff** (Go library). Its breaking-change checks are the source of truth, and its levels map as `ERR` → `error` and `WARN` → `warn`. Examples:
+Use **oasdiff** (Go library). Its breaking-change checks are the source of truth, and its levels map as `ERR` → `error` and `WARN` → `warn`, with `INFO` counted as additive. Two of its defaults are overridden to match this table: removing an optional response field is breaking (oasdiff says `INFO`), and a new response enum value is a warning (oasdiff says `ERR`). oasdiff's own version checks are off, because the semver gate below owns versioning. Examples:
 
 | Change | Breaking? |
 |---|---|

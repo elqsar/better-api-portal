@@ -69,7 +69,7 @@ type eventDiff struct {
 
 func (d *eventDiff) add(c model.Change) {
 	if c.Impact == model.ImpactBreaking {
-		c.ID = changeID(c)
+		c.ID = changeID("BRK-CE-", c)
 	}
 	d.changes = append(d.changes, c)
 }
@@ -81,10 +81,10 @@ func (d *eventDiff) addNew(c model.Change, ptr string) {
 }
 
 // changeID is stable for identical input, so an ack can be put in CI
-// config for a run.
-func changeID(c model.Change) string {
+// config for a run. prefix names the spec kind, such as BRK-CE-.
+func changeID(prefix string, c model.Change) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{c.RuleID, c.Type, c.Field, c.Message}, "\x00")))
-	return "BRK-CE-" + hex.EncodeToString(sum[:3])
+	return prefix + hex.EncodeToString(sum[:3])
 }
 
 func (d *eventDiff) message(om, nm model.Message) error {

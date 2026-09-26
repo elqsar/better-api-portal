@@ -118,11 +118,15 @@ func Run(descPath string, opts Options) (*Report, error) {
 				Dir:          filepath.Dir(res.Doc.Path),
 				Environments: envs,
 			}, cfg)...)
-			r.APIs = append(r.APIs, APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version})
-			if base != nil && hasAPI(base, api.ID) {
-				fs = append(fs, model.Finding{RuleID: "diff-unsupported", Severity: model.SeverityInfo, File: res.Doc.Path,
-					Message: "not compared with the baseline: diffing OpenAPI arrives with oasdiff"})
+			result := APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version}
+			if !hasErrors(parsed) { // a spec with broken refs can't be loaded for the diff
+				gate, err := compareOpenAPI(base, d, api, res, &result, opts.Acks)
+				if err != nil {
+					return nil, err
+				}
+				fs = append(fs, gate...)
 			}
+			r.APIs = append(r.APIs, result)
 		case descriptor.KindAsyncAPI:
 			// Parsed in a later milestone.
 		}
@@ -132,15 +136,6 @@ func Run(descPath string, opts Options) (*Report, error) {
 		r.Findings = append(r.Findings, fs...)
 	}
 	return r, nil
-}
-
-func hasAPI(d *descriptor.Descriptor, id string) bool {
-	for _, a := range d.APIs {
-		if a.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 func loadBaseline(path string) (*descriptor.Descriptor, error) {
@@ -157,12 +152,12 @@ func loadBaseline(path string) (*descriptor.Descriptor, error) {
 	return b, nil
 }
 
-// compareEvents diffs a parsed event catalogue against its baseline, if the
-// baseline has the API, and applies the version policy.
-func compareEvents(base *descriptor.Descriptor, d *descriptor.Descriptor, api descriptor.API,
-	res *eventcatalog.Result, result *APIResult, acks map[string]string) ([]model.Finding, error) {
+// baselineAPI finds api in the baseline. It returns -1 when there is nothing
+// to compare: no baseline, or the first version of this API. A change of
+// kind is a finding.
+func baselineAPI(base, d *descriptor.Descriptor, api descriptor.API) (int, []model.Finding, error) {
 	if base == nil {
-		return nil, nil
+		return -1, nil, nil
 	}
 	bi := -1
 	for j, b := range base.APIs {
@@ -171,17 +166,28 @@ func compareEvents(base *descriptor.Descriptor, d *descriptor.Descriptor, api de
 		}
 	}
 	if bi < 0 {
-		return nil, nil // the first version of this API: nothing to compare
+		return -1, nil, nil
 	}
-	bapi := base.APIs[bi]
-	if bapi.Kind != api.Kind {
-		return []model.Finding{{RuleID: "api-kind-changed", Severity: model.SeverityError, File: d.Path,
+	if bapi := base.APIs[bi]; bapi.Kind != api.Kind {
+		return -1, []model.Finding{{RuleID: "api-kind-changed", Severity: model.SeverityError, File: d.Path,
 			Message: fmt.Sprintf("%s was %s in the baseline and is %s now: API ids are permanent, so publish it under a new id",
 				api.ID, bapi.Kind, api.Kind)}}, nil
 	}
 	if !base.SpecOK(bi) {
-		return nil, fmt.Errorf("baseline %s: the spec of %s can't be read", base.Path, api.ID)
+		return -1, nil, fmt.Errorf("baseline %s: the spec of %s can't be read", base.Path, api.ID)
 	}
+	return bi, nil, nil
+}
+
+// compareEvents diffs a parsed event catalogue against its baseline, if the
+// baseline has the API, and applies the version policy.
+func compareEvents(base *descriptor.Descriptor, d *descriptor.Descriptor, api descriptor.API,
+	res *eventcatalog.Result, result *APIResult, acks map[string]string) ([]model.Finding, error) {
+	bi, kind, err := baselineAPI(base, d, api)
+	if bi < 0 || err != nil {
+		return kind, err
+	}
+	bapi := base.APIs[bi]
 	old, fs, err := eventcatalog.Parse(base.Dir, base.SpecPath(bi))
 	if err != nil {
 		return nil, fmt.Errorf("baseline: %w", err)
@@ -213,6 +219,49 @@ func compareEvents(base *descriptor.Descriptor, d *descriptor.Descriptor, api de
 	}), nil
 }
 
+// compareOpenAPI diffs a parsed OpenAPI document against its baseline, if
+// the baseline has the API, and applies the version policy.
+func compareOpenAPI(base *descriptor.Descriptor, d *descriptor.Descriptor, api descriptor.API,
+	res *openapi.Result, result *APIResult, acks map[string]string) ([]model.Finding, error) {
+	bi, kind, err := baselineAPI(base, d, api)
+	if bi < 0 || err != nil {
+		return kind, err
+	}
+	bapi := base.APIs[bi]
+	old, fs, err := openapi.Parse(base.Dir, base.SpecPath(bi))
+	if err != nil {
+		return nil, fmt.Errorf("baseline: %w", err)
+	}
+	if old == nil {
+		return nil, fmt.Errorf("baseline %s can't be read as a whole", base.SpecPath(bi))
+	}
+	if err := failOnErrors("baseline "+base.SpecPath(bi), fs); err != nil {
+		return nil, err
+	}
+
+	changes, err := diff.OpenAPI(old, res)
+	if err != nil {
+		return nil, err
+	}
+	same, err := diff.SameContent(base.Dir, old.Spec.Files, d.Dir, res.Spec.Files)
+	if err != nil {
+		return nil, err
+	}
+	result.BaselineVersion = old.Spec.Version
+	result.Changes = changes
+	return policy.Evaluate(policy.Input{
+		Version:           res.Spec.Version,
+		BaselineVersion:   old.Spec.Version,
+		Lifecycle:         api.Lifecycle,
+		BaselineLifecycle: bapi.Lifecycle,
+		Changes:           changes,
+		SameContent:       same,
+		Acks:              acks,
+		File:              res.Doc.Path,
+		VersionLine:       res.Doc.Line("/info/version"),
+	}), nil
+}
+
 // failOnErrors turns error findings in the baseline into an error: a broken
 // baseline isn't the change's fault, and nothing sound can be compared to it.
 func failOnErrors(what string, fs []model.Finding) error {
@@ -228,9 +277,10 @@ func failOnErrors(what string, fs []model.Finding) error {
 // directory. Findings are returned instead of changes when either file can't
 // be parsed.
 func DiffFiles(oldPath, newPath string, mode compat.Mode) ([]model.Change, []model.Finding, error) {
-	var results [2]*eventcatalog.Result
+	paths := [2]string{oldPath, newPath}
+	var kinds [2]descriptor.Kind
 	var findings []model.Finding
-	for i, p := range []string{oldPath, newPath} {
+	for i, p := range paths {
 		kind, f, err := descriptor.Sniff(p)
 		if err != nil {
 			return nil, nil, err
@@ -239,9 +289,36 @@ func DiffFiles(oldPath, newPath string, mode compat.Mode) ([]model.Change, []mod
 			findings = append(findings, *f)
 			continue
 		}
-		if kind != descriptor.KindCloudEvents {
-			return nil, nil, fmt.Errorf("%s: diffing %s specs is not supported yet, only event catalogues", p, orUnknown(kind))
+		if kind != descriptor.KindCloudEvents && kind != descriptor.KindOpenAPI {
+			return nil, nil, fmt.Errorf("%s: diffing %s specs is not supported yet, only event catalogues and OpenAPI", p, orUnknown(kind))
 		}
+		kinds[i] = kind
+	}
+	if len(findings) > 0 {
+		return nil, findings, nil
+	}
+	if kinds[0] != kinds[1] {
+		return nil, nil, fmt.Errorf("%s is %s but %s is %s: only specs of the same kind can be compared",
+			oldPath, kinds[0], newPath, kinds[1])
+	}
+	if kinds[0] == descriptor.KindOpenAPI {
+		var results [2]*openapi.Result
+		for i, p := range paths {
+			res, fs, err := openapi.Parse(filepath.Dir(p), p)
+			if err != nil {
+				return nil, nil, err
+			}
+			findings = append(findings, fs...)
+			results[i] = res
+		}
+		if results[0] == nil || results[1] == nil || hasErrors(findings) {
+			return nil, findings, nil
+		}
+		changes, err := diff.OpenAPI(results[0], results[1])
+		return changes, findings, err
+	}
+	var results [2]*eventcatalog.Result
+	for i, p := range paths {
 		res, fs, err := eventcatalog.Parse(filepath.Dir(p), p)
 		if err != nil {
 			return nil, nil, err

@@ -66,7 +66,10 @@ func checkCmd() *cobra.Command {
 diff each API against the previous version and apply the versioning policy.
 
 --baseline takes the previous version's portal.yaml, for example from
-  git worktree add ../base main`,
+  git worktree add ../base main
+Event catalogues are diffed natively and OpenAPI with oasdiff. A breaking
+change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
+--ack accepts.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			render, ok := map[string]func(io.Writer, *check.Report) error{
@@ -125,7 +128,10 @@ func diffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <old-spec> <new-spec>",
 		Short: "Compare two spec files; exits 1 if any change is breaking",
-		Args:  cobra.ExactArgs(2),
+		Long: `Compare two spec files of the same kind, an event catalogue or an OpenAPI
+document, and exit 1 if any change is breaking. --compatibility applies to
+event catalogues only.`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			m := compat.Mode(strings.ToUpper(mode))
 			switch m {
