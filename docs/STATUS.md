@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `06eb74f`
+Last updated: 2026-09-26 · Last commit: `8a5833f`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,9 +17,8 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** is under way: step 1 (the index behind
-browsing and search) and step 2 (the web skeleton with OIDC sign-in) are
-done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–3 (the index, the web
+skeleton with OIDC sign-in, the API list and pages) are done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -44,6 +43,7 @@ specs are available yet.
 | 16 | `109eb2d` | End-to-end test: the CLI against a real portal (publish, retry, reject, ack) |
 | 17 | `62b0a3c` | M3 index: `version_models`, message/operation/binding rows, `dependencies`, `search_docs`, `latest_version_id`; `portal reindex` |
 | 18 | `06eb74f` | Web UI skeleton: layout, embedded static files, OIDC sign-in with PKCE, Postgres sessions, `serve --dev-login` stub provider |
+| 19 | `8a5833f` | API list with filters, API pages (overview, lint & changes, versions), deprecation banner |
 
 ### J1/J2 against a portal
 ```sh
@@ -337,8 +337,29 @@ be changed in M3's first commit to match.
     PKCE. publicURL defaults to `http://localhost:<port>` with it.
   - `/api/v1` reads don't accept the session cookie yet; that comes with
     the docs step, which is the first to need it.
+- **API list and pages (step 3, done):**
+  - URLs: `/apis` (filters `team`, `kind`, `lifecycle`, `tag`, `q`),
+    `/apis/{id}` → latest, `/apis/{id}/versions/{v}` (overview; `latest`
+    redirects), `…/{v}/lint`, `/apis/{id}/versions` (history). Each tab
+    is its own URL; htmx swaps `#api-body` and pushes the URL, and the
+    list swaps `#api-table` with a cleaned `HX-Push-Url`.
+  - Only APIs with a published version are listed; order is in use,
+    deprecated, retired, then id. `q` is a case-insensitive substring of
+    id or title, with LIKE wildcards escaped.
+  - Rejected pushes appear in the history for the owning team and
+    admins only, with error counts and the CI run link; their findings
+    aren't shown in the UI (they're in the CI log).
+  - "Lint & changes" is one tab: findings sorted by severity, then the
+    diff against the baseline, with ack reasons inline.
+  - Descriptions render as plain text (`white-space: pre-line`), not
+    Markdown, for now.
+  - Events on the overview already link to `/events/{type}`, which is
+    step 5; until then those links 404.
+  - Web pages are tested against Postgres (`pages_integration_test.go`),
+    publishing through the real push API; the in-memory store only
+    covers sign-in.
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
-  skeleton + login (done); (3) API list/page; (4) Scalar docs; (5) event page;
+  skeleton + login (done); (3) API list/page (done); (4) Scalar docs; (5) event page;
   (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
   tests with golden HTML.
 
@@ -385,10 +406,12 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1
-(the index) and 2 (web skeleton, sign-in) are done. Next is step 3: the API
-list (`/apis`, filters by team, kind, lifecycle, tag) and the API page
-(`/apis/{id}/versions/{v}`: overview, versions, lint; deprecation banner).
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–3
+are done. Next is step 4: the Docs tab. The server resolves a version's
+bundle into one OpenAPI document (`/apis/{id}/versions/{v}/openapi.json`,
+cached by content hash) and embeds Scalar (pinned, from embedded static
+files) to render it; that needs `/api/v1`-style reads to accept the session
+cookie, or a UI route for the document.
 
 ## Known gaps
 
