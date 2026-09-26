@@ -1,0 +1,31 @@
+{{define "content"}}
+<form class="search" action="/search" method="get" role="search">
+  <input type="search" name="q" placeholder="Search operations, event types and schemas" aria-label="Search">
+  <button class="primary" type="submit">Search</button>
+</form>
+
+<div class="panel">
+  <div class="stat">{{.Data.APIs}}</div>
+  <div class="muted">{{if eq .Data.APIs 1}}API{{else}}APIs{{end}} published</div>
+</div>
+
+<h2>Recently published</h2>
+{{if .Data.Recent}}
+<table>
+  <thead><tr><th>API</th><th>Version</th><th>Owner</th><th>Lifecycle</th><th>Published</th></tr></thead>
+  <tbody>
+  {{range .Data.Recent}}
+  <tr>
+    <td><a href="/apis/{{.APIID}}/versions/{{.Semver}}">{{.APIID}}</a> <span class="badge">{{.Kind}}</span></td>
+    <td>{{.Semver}}</td>
+    <td>{{.Owner}}</td>
+    <td>{{.Lifecycle}}</td>
+    <td><time datetime="{{.PublishedAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.PublishedAt.UTC.Format "2006-01-02 15:04"}} UTC</time></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="muted">Nothing is published yet. A repo publishes with <code>portal push</code> from its CI.</p>
+{{end}}
+{{end}}

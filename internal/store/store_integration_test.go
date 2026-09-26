@@ -191,3 +191,31 @@ func TestTokens(t *testing.T) {
 		t.Fatalf("tokens = %+v, %v", all, err)
 	}
 }
+
+func TestSessions(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	live := store.Session{Subject: "u1", Name: "Ada", Groups: []string{"eng-orders"}, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := s.CreateSession(ctx, []byte("live"), live); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateSession(ctx, []byte("old"), store.Session{Subject: "u2", ExpiresAt: time.Now().Add(-time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Session(ctx, []byte("live"))
+	if err != nil || got == nil || got.Name != "Ada" || len(got.Groups) != 1 {
+		t.Fatalf("session = %+v, %v", got, err)
+	}
+	if got, _ := s.Session(ctx, []byte("old")); got != nil {
+		t.Error("expired session still works")
+	}
+	if err := s.DeleteSession(ctx, []byte("live")); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Session(ctx, []byte("live")); got != nil {
+		t.Error("deleted session still works")
+	}
+	if ps, n, err := s.RecentlyPublished(ctx, 5); err != nil || n != 0 || len(ps) != 0 {
+		t.Errorf("recent = %v %d %v", ps, n, err)
+	}
+}

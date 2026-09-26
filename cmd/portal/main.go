@@ -27,6 +27,8 @@ import (
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/report"
 	"better-api-portal/internal/store"
+	"better-api-portal/internal/web"
+	"better-api-portal/internal/web/devoidc"
 )
 
 // Exit codes: 1 means the check found problems, 2 that it couldn't run.
@@ -270,6 +272,7 @@ check --baseline as api-id=file. Doesn't lint: run check for that.`,
 
 func serveCmd() *cobra.Command {
 	var dsn, configPath string
+	var devLogin bool
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the portal server",
@@ -279,7 +282,12 @@ configuration. Logs are JSON on stderr.
 
 CI jobs authenticate with an ID token from an issuer in ci.trustedIssuers
 (GitHub Actions, GitLab), or with a static token from portal admin token
-create.`,
+create.
+
+The web UI signs people in with the OIDC provider in oidc (the client secret,
+if needed, from $PORTAL_OIDC_CLIENT_SECRET) and needs server.publicURL.
+--dev-login replaces it with a stub provider at /dev/oidc where anyone can
+sign in as anyone, with any configured group: for local development only.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dsn, err := dsnOrEnv(dsn)
@@ -317,9 +325,27 @@ create.`,
 			if addr == "" {
 				addr = ":8080"
 			}
+			mux := http.NewServeMux()
+			if devLogin {
+				idp, err := devLoginProvider(cfg, addr)
+				if err != nil {
+					return err
+				}
+				mux.Handle("/dev/oidc/", idp.Handler())
+				log.Warn("--dev-login: anyone can sign in as anyone; never use this in production", "issuer", idp.Issuer())
+			}
+			ui, err := web.New(web.Options{Store: s, Config: cfg, Log: log, ClientSecret: os.Getenv("PORTAL_OIDC_CLIENT_SECRET")})
+			if err != nil {
+				return err
+			}
+			apiHandler := api.Handler()
+			mux.Handle("/api/", apiHandler)
+			mux.Handle("/healthz", apiHandler)
+			mux.Handle("/readyz", apiHandler)
+			mux.Handle("/", ui.Handler())
 			srv := &http.Server{
 				Addr:              addr,
-				Handler:           api.Handler(),
+				Handler:           mux,
 				ReadHeaderTimeout: 10 * time.Second,
 				ReadTimeout:       2 * time.Minute, // a push can be tens of MB
 				WriteTimeout:      2 * time.Minute,
@@ -341,7 +367,35 @@ create.`,
 	}
 	cmd.Flags().StringVar(&dsn, "dsn", "", "Postgres connection string (default $PORTAL_DSN)")
 	cmd.Flags().StringVar(&configPath, "config", "", "portal configuration (portal.config.yaml)")
+	cmd.Flags().BoolVar(&devLogin, "dev-login", false, "sign in with a stub identity provider (development only)")
 	return cmd
+}
+
+// devLoginProvider sets the configuration up for the stub identity
+// provider, offering every configured team and admin group.
+func devLoginProvider(cfg *config.Config, addr string) (*devoidc.Provider, error) {
+	if cfg.Server.PublicURL == "" {
+		host, port, _ := strings.Cut(addr, ":")
+		if host == "" {
+			host = "localhost"
+		}
+		cfg.Server.PublicURL = "http://" + host + ":" + port
+	}
+	var groups []string
+	for _, t := range cfg.Teams {
+		if t.OIDCGroup != "" {
+			groups = append(groups, t.OIDCGroup)
+		}
+	}
+	if cfg.Admins.OIDCGroup != "" {
+		groups = append(groups, cfg.Admins.OIDCGroup)
+	}
+	idp, err := devoidc.New(strings.TrimSuffix(cfg.Server.PublicURL, "/")+"/dev/oidc", groups)
+	if err != nil {
+		return nil, err
+	}
+	cfg.OIDC = config.OIDC{Issuer: idp.Issuer(), ClientID: devoidc.ClientID, GroupsClaim: config.DefaultGroupsClaim}
+	return idp, nil
 }
 
 func dsnOrEnv(dsn string) (string, error) {

@@ -19,7 +19,7 @@ func TestLoadExample(t *testing.T) {
 
 func TestLoadIgnoresUnknownSections(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "portal.config.yaml")
-	body := "org: {name: X, eventTypePrefix: com.x.}\noidc: {issuer: https://login.x}\nbrokers: [{name: k, protocol: kafka}]\n"
+	body := "org: {name: X, eventTypePrefix: com.x.}\nrulesets: {openapi: {default: x}}\nbrokers: [{name: k, protocol: kafka}]\n"
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -75,5 +75,21 @@ func TestLoadCI(t *testing.T) {
 				t.Errorf("defaults not applied: %+v", ti)
 			}
 		})
+	}
+}
+
+func TestLoadOIDC(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "portal.config.yaml")
+	os.WriteFile(p, []byte("oidc: {issuer: https://login.x, clientId: portal}\nadmins: {oidcGroup: eng-platform}\n"), 0o644)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.OIDC.GroupsClaim != "groups" || c.Admins.OIDCGroup != "eng-platform" {
+		t.Errorf("oidc = %+v, admins = %+v", c.OIDC, c.Admins)
+	}
+	os.WriteFile(p, []byte("oidc: {issuer: https://login.x}\n"), 0o644)
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "clientId") {
+		t.Errorf("no client id: %v", err)
 	}
 }

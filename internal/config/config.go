@@ -19,6 +19,29 @@ type Config struct {
 	Teams  []Team `yaml:"teams"`
 	Server Server `yaml:"server"`
 	CI     CI     `yaml:"ci"`
+	OIDC   OIDC   `yaml:"oidc"`
+	Admins Admins `yaml:"admins"`
+}
+
+// OIDC configures how people sign in to the web UI.
+type OIDC struct {
+	// Issuer is the identity provider; empty disables sign-in, and with it
+	// the UI.
+	Issuer   string `yaml:"issuer"`
+	ClientID string `yaml:"clientId"`
+	// GroupsClaim names the ID token claim listing the user's groups, which
+	// map to teams and admins; default "groups".
+	GroupsClaim string `yaml:"groupsClaim"`
+	// The client secret, if the provider needs one, comes from
+	// $PORTAL_OIDC_CLIENT_SECRET; the flow uses PKCE either way.
+}
+
+// DefaultGroupsClaim is OIDC.GroupsClaim's default.
+const DefaultGroupsClaim = "groups"
+
+// Admins are who may administer the portal.
+type Admins struct {
+	OIDCGroup string `yaml:"oidcGroup"`
 }
 
 // CI configures how CI jobs authenticate to the portal.
@@ -91,7 +114,26 @@ func Load(path string) (*Config, error) {
 	if err := c.CI.normalise(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.OIDC.normalise(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return &c, nil
+}
+
+func (o *OIDC) normalise() error {
+	if o.Issuer == "" {
+		return nil
+	}
+	if u, err := url.Parse(o.Issuer); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		return fmt.Errorf("oidc: issuer %q is not a URL", o.Issuer)
+	}
+	if o.ClientID == "" {
+		return fmt.Errorf("oidc: clientId is required with an issuer")
+	}
+	if o.GroupsClaim == "" {
+		o.GroupsClaim = DefaultGroupsClaim
+	}
+	return nil
 }
 
 // normalise fills in the defaults and rejects what can't work.

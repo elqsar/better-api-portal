@@ -66,10 +66,10 @@ tasks:
       - bin/portal migrate --dsn '{{.DEV_DSN}}'
 
   run:
-    desc: Run portal serve against the development database, on :8080
+    desc: Run portal serve against the development database, on http://localhost:8080, with the stub sign-in
     deps: [build]
     cmds:
-      - bin/portal serve --dsn '{{.DEV_DSN}}' --config docs/spec/examples/portal.config.yaml
+      - bin/portal serve --dsn '{{.DEV_DSN}}' --config docs/spec/examples/portal.config.yaml --dev-login
 
   test:integration:
     desc: Run the tests that need Postgres, including the end-to-end CLI tests (start it with task dev:db)
