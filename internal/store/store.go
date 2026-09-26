@@ -36,6 +36,10 @@ const (
 // ErrClaimed means the API id is claimed by another repo.
 var ErrClaimed = errors.New("api is claimed by another repo")
 
+// ErrUnclaimed means a rejected push named an API no repo has claimed: only
+// a successful push claims an id, so there is nothing to record it against.
+var ErrUnclaimed = errors.New("api is not claimed")
+
 // ErrVersionExists means a published version with that semver exists already.
 var ErrVersionExists = errors.New("version is already published")
 
@@ -111,6 +115,19 @@ func (s *Store) SyncTeams(ctx context.Context, teams []Team) error {
 	})
 }
 
+// Teams returns the teams, by slug.
+func (s *Store) Teams(ctx context.Context) ([]Team, error) {
+	rows, err := s.pool.Query(ctx, `SELECT slug, name, oidc_group FROM teams ORDER BY slug`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Team, error) {
+		var t Team
+		err := r.Scan(&t.Slug, &t.Name, &t.OIDCGroup)
+		return t, err
+	})
+}
+
 // Repo returns the id of the repo with the given CI subject, creating it.
 func (s *Store) Repo(ctx context.Context, ciSubject string) (int64, error) {
 	var id int64
@@ -121,17 +138,29 @@ func (s *Store) Repo(ctx context.Context, ciSubject string) (int64, error) {
 	return id, err
 }
 
-// ClaimOwner returns the CI subject of the repo that claimed the API, or ""
-// if it is unclaimed.
-func (s *Store) ClaimOwner(ctx context.Context, apiID string) (string, error) {
-	var subject string
+// APIRecord is a stored API: who claimed it and its current metadata.
+type APIRecord struct {
+	ID        string
+	Kind      string
+	Owner     string
+	Lifecycle string
+	Repo      string // the CI subject of the repo that claimed it
+}
+
+// API returns the API with the id, or nil if it is unclaimed.
+func (s *Store) API(ctx context.Context, id string) (*APIRecord, error) {
+	var a APIRecord
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.ci_subject FROM apis a JOIN repos r ON r.id = a.repo_id WHERE a.id = $1`,
-		apiID).Scan(&subject)
+		SELECT a.id, a.kind, a.owner, a.lifecycle, r.ci_subject FROM apis a
+		JOIN repos r ON r.id = a.repo_id WHERE a.id = $1`,
+		id).Scan(&a.ID, &a.Kind, &a.Owner, &a.Lifecycle, &a.Repo)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return nil, nil
 	}
-	return subject, err
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
 }
 
 // Version is a stored version, without its reports.
@@ -244,11 +273,12 @@ type Push struct {
 	Changes         []model.Change
 }
 
-// Record stores a push in one transaction: it claims the API for the repo if
-// it is unclaimed, updates its metadata, and inserts the bundle, version,
-// reports and audit entry. A rejected push updates no metadata. It returns
-// ErrClaimed if another repo owns the API, and ErrVersionExists if the
-// version is published already.
+// Record stores a push in one transaction: a published push claims the API
+// for the repo if it is unclaimed and updates its metadata; then the bundle,
+// version, reports and audit entry are inserted. A rejected push changes no
+// metadata and claims nothing. It returns ErrClaimed if another repo owns the
+// API, ErrUnclaimed for a rejected push of an unclaimed API, and
+// ErrVersionExists if the version is published already.
 func (s *Store) Record(ctx context.Context, p Push) (int64, error) {
 	var id int64
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -295,9 +325,23 @@ func (s *Store) Record(ctx context.Context, p Push) (int64, error) {
 	return id, err
 }
 
-// claim inserts the API or, if this repo owns it, updates its metadata on a
-// published push. The row lock taken here serialises pushes of one API.
+// claim inserts or updates the API for a published push, and checks the
+// repo owns it for a rejected one. The row lock taken here serialises pushes
+// of one API.
 func claim(ctx context.Context, tx pgx.Tx, p Push) error {
+	if p.Version.Status != StatusPublished {
+		var repo int64
+		err := tx.QueryRow(ctx, `SELECT repo_id FROM apis WHERE id = $1 FOR UPDATE`, p.API.ID).Scan(&repo)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return ErrUnclaimed
+		case err != nil:
+			return err
+		case repo != p.RepoID:
+			return ErrClaimed
+		}
+		return nil
+	}
 	meta := p.API.Meta
 	if meta == nil {
 		meta = map[string]any{}
@@ -310,14 +354,10 @@ func claim(ctx context.Context, tx pgx.Tx, p Push) error {
 		INSERT INTO apis (id, kind, owner, lifecycle, sunset, repo_id, meta)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (id) DO UPDATE SET
-			kind = CASE WHEN $8 THEN excluded.kind ELSE apis.kind END,
-			owner = CASE WHEN $8 THEN excluded.owner ELSE apis.owner END,
-			lifecycle = CASE WHEN $8 THEN excluded.lifecycle ELSE apis.lifecycle END,
-			sunset = CASE WHEN $8 THEN excluded.sunset ELSE apis.sunset END,
-			meta = CASE WHEN $8 THEN excluded.meta ELSE apis.meta END
+			kind = excluded.kind, owner = excluded.owner, lifecycle = excluded.lifecycle,
+			sunset = excluded.sunset, meta = excluded.meta
 		WHERE apis.repo_id = excluded.repo_id`,
-		p.API.ID, p.API.Kind, p.API.Owner, p.API.Lifecycle, sunset, p.RepoID, meta,
-		p.Version.Status == StatusPublished)
+		p.API.ID, p.API.Kind, p.API.Owner, p.API.Lifecycle, sunset, p.RepoID, meta)
 	if err != nil {
 		return err
 	}

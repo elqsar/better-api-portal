@@ -60,7 +60,7 @@ func Load(path string) (*Descriptor, []model.Finding, error) {
 		return nil, findings, nil
 	}
 
-	d := &Descriptor{Path: path, Dir: filepath.Dir(path)}
+	d := &Descriptor{Path: path, Dir: filepath.Dir(path), doc: doc}
 	if err := doc.Decode(d); err != nil {
 		return nil, nil, err
 	}

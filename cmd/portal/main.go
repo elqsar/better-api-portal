@@ -7,9 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +23,7 @@ import (
 	"better-api-portal/internal/compat"
 	"better-api-portal/internal/config"
 	"better-api-portal/internal/descriptor"
+	"better-api-portal/internal/httpapi"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/report"
 	"better-api-portal/internal/store"
@@ -52,7 +58,7 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd())
 	return root
 }
 
@@ -319,6 +325,90 @@ check --baseline as api-id=file. Doesn't lint: run check for that.`,
 	return cmd
 }
 
+func serveCmd() *cobra.Command {
+	var dsn, configPath string
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Run the portal server",
+		Long: `Run the REST API. It migrates the database at startup (behind an advisory
+lock, so replicas can start together) and syncs the teams from the
+configuration. Logs are JSON on stderr.
+
+Pushes need CI authentication; until it is configured every push gets 401.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			dsn, err := dsnOrEnv(dsn)
+			if err != nil {
+				return err
+			}
+			cfg := &config.Config{}
+			if configPath != "" {
+				if cfg, err = config.Load(configPath); err != nil {
+					return err
+				}
+			}
+			log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
+			s, err := store.Open(ctx, dsn)
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			if err := s.Migrate(ctx); err != nil {
+				return fmt.Errorf("migrate: %w", err)
+			}
+			teams := make([]store.Team, len(cfg.Teams))
+			for i, t := range cfg.Teams {
+				teams[i] = store.Team{Slug: t.Slug, Name: t.Name, OIDCGroup: t.OIDCGroup}
+			}
+			if err := s.SyncTeams(ctx, teams); err != nil {
+				return fmt.Errorf("sync teams: %w", err)
+			}
+
+			api := &httpapi.Server{Store: s, Config: cfg, Auth: httpapi.NoAuth{}, Log: log}
+			addr := cfg.Server.Listen
+			if addr == "" {
+				addr = ":8080"
+			}
+			srv := &http.Server{
+				Addr:              addr,
+				Handler:           api.Handler(),
+				ReadHeaderTimeout: 10 * time.Second,
+				ReadTimeout:       2 * time.Minute, // a push can be tens of MB
+				WriteTimeout:      2 * time.Minute,
+				IdleTimeout:       2 * time.Minute,
+			}
+			errc := make(chan error, 1)
+			go func() { errc <- srv.ListenAndServe() }()
+			log.Info("serving", "addr", addr)
+			select {
+			case err := <-errc:
+				return err
+			case <-ctx.Done():
+			}
+			log.Info("shutting down")
+			shutdown, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			return srv.Shutdown(shutdown)
+		},
+	}
+	cmd.Flags().StringVar(&dsn, "dsn", "", "Postgres connection string (default $PORTAL_DSN)")
+	cmd.Flags().StringVar(&configPath, "config", "", "portal configuration (portal.config.yaml)")
+	return cmd
+}
+
+func dsnOrEnv(dsn string) (string, error) {
+	if dsn == "" {
+		dsn = os.Getenv("PORTAL_DSN")
+	}
+	if dsn == "" {
+		return "", errors.New("no database: pass --dsn or set PORTAL_DSN")
+	}
+	return dsn, nil
+}
+
 func migrateCmd() *cobra.Command {
 	var dsn string
 	cmd := &cobra.Command{
@@ -329,11 +419,9 @@ does this at startup too; the command is for pipelines that prefer an
 explicit step. It holds an advisory lock, so concurrent runs are safe.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if dsn == "" {
-				dsn = os.Getenv("PORTAL_DSN")
-			}
-			if dsn == "" {
-				return errors.New("no database: pass --dsn or set PORTAL_DSN")
+			dsn, err := dsnOrEnv(dsn)
+			if err != nil {
+				return err
 			}
 			ctx := context.Background()
 			s, err := store.Open(ctx, dsn)

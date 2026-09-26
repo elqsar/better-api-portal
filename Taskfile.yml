@@ -65,9 +65,15 @@ tasks:
     cmds:
       - bin/portal migrate --dsn '{{.DEV_DSN}}'
 
+  run:
+    desc: Run portal serve against the development database, on :8080
+    deps: [build]
+    cmds:
+      - bin/portal serve --dsn '{{.DEV_DSN}}' --config docs/spec/examples/portal.config.yaml
+
   test:integration:
     desc: Run the tests that need Postgres (start it with task dev:db)
     env:
       PORTAL_TEST_DSN: '{{.DEV_DSN}}'
     cmds:
-      - go test -tags integration -count=1 ./internal/store/... {{.CLI_ARGS}}
+      - go test -tags integration -count=1 ./internal/store/... ./internal/httpapi/... {{.CLI_ARGS}}

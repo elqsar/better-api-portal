@@ -1,7 +1,11 @@
 // Package descriptor parses and validates portal.yaml (docs/spec/03-formats.md §1).
 package descriptor
 
-import "path/filepath"
+import (
+	"path/filepath"
+
+	"better-api-portal/internal/yamldoc"
+)
 
 // Descriptor is a parsed portal.yaml.
 type Descriptor struct {
@@ -18,6 +22,15 @@ type Descriptor struct {
 	Dir  string `yaml:"-"`
 
 	specOK map[int]bool
+	doc    *yamldoc.Doc
+}
+
+// Line returns the line of the JSON pointer ptr in the descriptor, or 0.
+func (d *Descriptor) Line(ptr string) int {
+	if d.doc == nil {
+		return 0
+	}
+	return d.doc.Line(ptr)
 }
 
 // SpecOK reports whether apis[i]'s spec file exists and is of its kind, so

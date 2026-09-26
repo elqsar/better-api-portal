@@ -90,6 +90,7 @@ func Run(descPath string, opts Options) (*Report, error) {
 	var cfg lint.Config
 	if opts.Config != nil {
 		cfg.EventTypePrefix = opts.Config.Org.EventTypePrefix
+		r.Findings = append(r.Findings, unknownOwners(d, opts.Config)...)
 	}
 	for i, api := range d.APIs {
 		if !d.SpecOK(i) {
@@ -167,6 +168,38 @@ func Run(descPath string, opts Options) (*Report, error) {
 		r.Findings = append(r.Findings, fs...)
 	}
 	return r, nil
+}
+
+// unknownOwners reports owners that aren't teams in the configuration, once
+// per place they are set. A configuration without teams checks nothing.
+func unknownOwners(d *descriptor.Descriptor, cfg *config.Config) []model.Finding {
+	if len(cfg.Teams) == 0 {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, t := range cfg.Teams {
+		known[t.Slug] = true
+	}
+	var fs []model.Finding
+	inherited := false
+	for i, api := range d.APIs {
+		if api.Owner == "" {
+			inherited = true
+			continue
+		}
+		if !known[api.Owner] {
+			ptr := fmt.Sprintf("/apis/%d/owner", i)
+			fs = append(fs, model.Finding{API: api.ID, RuleID: "descriptor-owner-unknown", Severity: model.SeverityError,
+				Message: fmt.Sprintf("owner %s is not a team in the portal configuration", api.Owner),
+				File:    d.Path, Pointer: ptr, Line: d.Line(ptr)})
+		}
+	}
+	if inherited && !known[d.Owner] {
+		fs = append(fs, model.Finding{RuleID: "descriptor-owner-unknown", Severity: model.SeverityError,
+			Message: fmt.Sprintf("owner %s is not a team in the portal configuration", d.Owner),
+			File:    d.Path, Pointer: "/owner", Line: d.Line("/owner")})
+	}
+	return fs
 }
 
 // baselines are where the APIs' previous versions come from.

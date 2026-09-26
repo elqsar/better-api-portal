@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -469,5 +470,33 @@ func TestDiffFiles(t *testing.T) {
 	}
 	if len(changes) != 1 || changes[0].Impact != model.ImpactBreaking {
 		t.Errorf("openapi changes = %+v", changes)
+	}
+}
+
+func TestRunUnknownOwner(t *testing.T) {
+	_, head := baselinePair(t, map[string][2]string{"portal.yaml": {"    lifecycle: production\n    tags:", "    owner: team-nope\n    lifecycle: production\n    tags:"}})
+	cfg := &config.Config{Teams: []config.Team{{Slug: "team-payments"}}}
+	r, err := Run(head, Options{Config: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range r.Findings {
+		if f.RuleID == "descriptor-owner-unknown" {
+			got = append(got, f.API+" "+f.Pointer+" "+strconv.Itoa(f.Line))
+		}
+	}
+	// orders-http sets its own owner; orders-events inherits team-orders.
+	if want := []string{"orders-http /apis/0/owner 12", " /owner 2"}; !slices.Equal(got, want) {
+		t.Errorf("owner findings = %q, want %q", got, want)
+	}
+
+	// Without teams in the configuration nothing is checked.
+	r, err = Run(head, Options{Config: &config.Config{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := errorsOf(r); len(errs) > 0 {
+		t.Errorf("errors = %v", errs)
 	}
 }

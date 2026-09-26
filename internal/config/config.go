@@ -13,8 +13,18 @@ import (
 // needs are modelled so far; the others are ignored until the server needs
 // them.
 type Config struct {
-	Org   Org    `yaml:"org"`
-	Teams []Team `yaml:"teams"`
+	Org    Org    `yaml:"org"`
+	Teams  []Team `yaml:"teams"`
+	Server Server `yaml:"server"`
+}
+
+// Server configures `portal serve`.
+type Server struct {
+	// Listen is the address to listen on; default ":8080".
+	Listen string `yaml:"listen"`
+	// PublicURL is the portal's base URL, for the links in push results,
+	// e.g. "https://api-portal.internal". Without it they are paths.
+	PublicURL string `yaml:"publicURL"`
 }
 
 type Org struct {
