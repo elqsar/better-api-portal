@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `9cc547a`
+Last updated: 2026-09-26 · Last commit: `58137c5`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -52,7 +52,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | Package | Role |
 |---|---|
 | `cmd/portal` | cobra CLI: `check`, `diff`, `bundle` |
-| `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy |
+| `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
 | `internal/bundle` | `$ref` file closure (remote refs, escapes and missing files are problems); `RelTo`; `Bundle`: `Hash`, `Pack`/`Unpack` tar.zst |
@@ -122,6 +122,22 @@ openapi, compat).
   orders-http now scores 94, up from 70. The spec's "96/100" was vacuum's own
   score.
 
+## Decisions (push pipeline)
+
+- **`check.RunBundles`** writes the uploaded descriptor (as `portal.yaml`)
+  and every bundle into one temporary root, then calls `Run`, so the server's
+  verdict equals `portal check`'s by construction (tested on the example).
+- A push must have exactly one bundle per non-AsyncAPI API, with the
+  descriptor's `spec` as its entry. Bundles may share a file only with
+  identical bytes. Otherwise it's an error (a malformed request), not a
+  finding.
+- Report paths are relative to the descriptor. Files from a baseline read
+  `baseline:<id>/<path>`, and temporary paths inside messages are rewritten
+  the same way.
+- **`Options.BaselineBundles`** are per-API in-memory baselines that carry the
+  previous lifecycle, so `lifecycle-reversal` works against the store, unlike
+  bundle files. An id can't have a baseline both there and in `--baseline`.
+
 ## Decisions (store)
 
 - **Tables in M2** are only what push and the gate need: teams, repos, apis,
@@ -166,8 +182,8 @@ openapi, compat).
 Q1 default):
 
 1. ~~`internal/store`~~ done: pgx + goose, `portal migrate`, `task dev:db`.
-2. `internal/check` over in-memory bundles: baselines and uploaded specs from
-   `*bundle.Bundle`, still pure.
+2. ~~`internal/check` over in-memory bundles~~ done: `RunBundles`,
+   `Options.BaselineBundles`.
 3. `portal serve` + `POST /api/v1/push` and `/check`, `GET …/bundle`, with
    auth behind an interface: idempotency, immutability, a baseline from the
    store, one transaction per API.
