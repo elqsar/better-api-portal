@@ -76,19 +76,19 @@ const (
 )
 
 type Link struct {
-	Title string `yaml:"title"`
-	URL   string `yaml:"url"`
+	Title string `yaml:"title" json:"title,omitempty"`
+	URL   string `yaml:"url" json:"url"`
 }
 
 // Environment is an HTTP base URL or a reference to a configured broker.
 type Environment struct {
-	Name   string `yaml:"name"`
-	URL    string `yaml:"url"`
-	Broker string `yaml:"broker"`
+	Name   string `yaml:"name" json:"name"`
+	URL    string `yaml:"url" json:"url,omitempty"`
+	Broker string `yaml:"broker" json:"broker,omitempty"`
 }
 
 // Consumes declares a dependency of every API in the repo on another API.
 type Consumes struct {
-	API   string   `yaml:"api"`
-	Types []string `yaml:"types"`
+	API   string   `yaml:"api" json:"api"`
+	Types []string `yaml:"types" json:"types,omitempty"`
 }

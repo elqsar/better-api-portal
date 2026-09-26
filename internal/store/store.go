@@ -21,6 +21,7 @@ import (
 	"github.com/pressly/goose/v3/lock"
 	"golang.org/x/mod/semver"
 
+	"better-api-portal/internal/index"
 	"better-api-portal/internal/model"
 )
 
@@ -145,15 +146,18 @@ type APIRecord struct {
 	Owner     string
 	Lifecycle string
 	Repo      string // the CI subject of the repo that claimed it
+	// LatestVersionID is the version shown by default (see updateLatest);
+	// 0 if none is published.
+	LatestVersionID int64
 }
 
 // API returns the API with the id, or nil if it is unclaimed.
 func (s *Store) API(ctx context.Context, id string) (*APIRecord, error) {
 	var a APIRecord
 	err := s.pool.QueryRow(ctx, `
-		SELECT a.id, a.kind, a.owner, a.lifecycle, r.ci_subject FROM apis a
+		SELECT a.id, a.kind, a.owner, a.lifecycle, r.ci_subject, COALESCE(a.latest_version_id, 0) FROM apis a
 		JOIN repos r ON r.id = a.repo_id WHERE a.id = $1`,
-		id).Scan(&a.ID, &a.Kind, &a.Owner, &a.Lifecycle, &a.Repo)
+		id).Scan(&a.ID, &a.Kind, &a.Owner, &a.Lifecycle, &a.Repo, &a.LatestVersionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -271,11 +275,16 @@ type Push struct {
 	// BaselineVersion is empty when the version wasn't diffed.
 	BaselineVersion string
 	Changes         []model.Change
+
+	// Index is what a published version is browsed and searched by; nil
+	// indexes nothing (portal reindex can add it later).
+	Index *index.Version
 }
 
 // Record stores a push in one transaction: a published push claims the API
 // for the repo if it is unclaimed and updates its metadata; then the bundle,
-// version, reports and audit entry are inserted. A rejected push changes no
+// version, reports and audit entry are inserted, and for a published version
+// its index, the API's latest version and its dependencies. A rejected push changes no
 // metadata and claims nothing. It returns ErrClaimed if another repo owns the
 // API, ErrUnclaimed for a rejected push of an unclaimed API, and
 // ErrVersionExists if the version is published already.
@@ -316,6 +325,19 @@ func (s *Store) Record(ctx context.Context, p Push) (int64, error) {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO diff_reports (version_id, baseline_version, changes) VALUES ($1, $2, $3)`,
 				id, p.BaselineVersion, nonNil(p.Changes)); err != nil {
+				return err
+			}
+		}
+		if p.Version.Status == StatusPublished {
+			if p.Index != nil {
+				if err := writeIndex(ctx, tx, id, p.API.ID, p.Index); err != nil {
+					return err
+				}
+			}
+			if err := updateLatest(ctx, tx, p.API.ID); err != nil {
+				return err
+			}
+			if err := syncDependencies(ctx, tx, p.API.ID); err != nil {
 				return err
 			}
 		}

@@ -19,6 +19,7 @@ import (
 	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/check"
 	"better-api-portal/internal/descriptor"
+	"better-api-portal/internal/index"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/store"
 )
@@ -277,6 +278,10 @@ func (s *Server) process(ctx context.Context, who *Identity, req *pushRequest, d
 		if err != nil {
 			return nil, err
 		}
+		var idx *index.Version
+		if status == store.StatusPublished && res.Spec != nil {
+			idx = index.Build(index.API{ID: api.ID, Title: api.Title, Tags: api.Tags}, res.Spec)
+		}
 		_, err = s.Store.Record(ctx, store.Push{
 			API:    apiMeta(&d, api),
 			RepoID: repoID,
@@ -295,6 +300,7 @@ func (s *Server) process(ctx context.Context, who *Identity, req *pushRequest, d
 			Findings:        forAPI(resp.Findings, api.ID),
 			BaselineVersion: res.BaselineVersion,
 			Changes:         res.Changes,
+			Index:           idx,
 		})
 		switch {
 		case errors.Is(err, store.ErrClaimed):

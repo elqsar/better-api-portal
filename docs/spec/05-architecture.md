@@ -22,10 +22,11 @@ One Go binary, `portal`, with subcommands. It needs one Postgres. No other runti
 |---|---|
 | `portal serve` | Web UI, REST API and background worker. Runs migrations at start, behind a Postgres advisory lock. |
 | `portal check [--descriptor portal.yaml] [--baseline file] [--format text\|json\|sarif\|junit] [--output format=path]` | Validate, lint, bundle and diff locally. It writes only the report files asked for with `--output` (repeatable), so one run can give a CI log plus SARIF and JUnit files. |
-| `portal push` | `check`, then upload. Prints the version URL and report. |
+| `portal push [--dry-run]` | Bundle and upload; the portal checks and publishes. Prints the report and each version's URL. |
 | `portal bundle --out dir` | Write each API's bundle to `<dir>/<api-id>.tar.zst` and print its content hash. It can be used as `check --baseline api-id=file`. |
 | `portal diff <old> <new>` | Diff any two spec files or portal refs (`orders-http@2.3.0`). |
 | `portal migrate` | Run DB migrations explicitly, for pipelines that prefer that. |
+| `portal reindex` | Rebuild the browse and search index of every published version from the stored bundles. |
 | `portal admin …` | Transfer an API claim, delete a version, issue a fallback push token. |
 
 ## Code layout
@@ -99,19 +100,22 @@ Target: < 5 s server time for a 5 000-line spec at MVP scale.
 |---|---|
 | `teams` | Synced from config at startup |
 | `repos` | `url`, `ci_subject` (OIDC `sub` / repository claim) |
-| `apis` | `id` PK, `kind`, `owner`, `lifecycle`, `sunset`, `repo_id`, `meta jsonb` (tags, links, system, environments) |
+| `apis` | `id` PK, `kind`, `owner`, `lifecycle`, `sunset`, `repo_id`, `meta jsonb` (title, tags, links, system, environments, consumes), `latest_version_id` (highest release, else highest pre-release) |
 | `versions` | `(api_id, semver)` unique, `content_hash`, `status`, `source jsonb`, `acks jsonb`, `created_at` |
 | `bundles` | `content_hash` PK, `data bytea` (tar.zst), `size`. Content-addressed and deduplicated. |
-| `operations`, `messages`, `bindings`, `schemas`, `schema_fields` | FK → `versions`. These are the normalised model rows. |
-| `dependencies` | `from_api`, `to_api`, `types text[]` |
+| `version_models` | FK → `versions`; `model jsonb`, the parsed spec, which pages render from. Schema documents are read from the bundle. |
+| `operations`, `messages`, `bindings` | FK → `versions`, plus `api_id`. Thin rows, only for queries across APIs: who produces or receives an event type (J4, `ce-type-unique`), who uses a topic (`ce-topic-single-owner`). |
+| `dependencies` | `from_api`, `to_api`, `types text[]`: the API's current `consumes`, not per version |
 | `lint_reports`, `diff_reports` | FK → `versions`, `ruleset_hash`, `score`, `findings jsonb` |
-| `search_docs` | `kind`, `ref`, `api_id`, `title`, `body`, `tsv tsvector`, trigram index on `title` |
+| `search_docs` | FK → `versions`; `kind` (api, operation, message, schema), `ref`, `api_id`, `title`, `terms`, `body`, generated `tsv` (terms weighted above body), trigram index on `title` |
 | `jobs` | `kind`, `payload`, `run_after`, `attempts`. Workers poll with `FOR UPDATE SKIP LOCKED`. |
 | `audit_log` | `actor`, `action`, `target`, `details jsonb`, `at` |
 
 Sizing: 500 APIs × 50 versions × ~200 KB compressed is about 5 GB worst case, and realistically well under 1 GB. `bytea` is fine at that size, and the `bundles` table sits behind a small interface so S3/GCS can be swapped in later if needed.
 
 Search is tuned to show only **latest** versions by default. Older versions are searchable with a filter.
+
+Only published versions are indexed. Everything from `version_models` to `search_docs`, plus `latest_version_id`, is derived from the bundles and `apis.meta`, so `portal reindex` can rebuild it after a change to the index; it's written in the push's transaction otherwise. Identifiers are split into words before indexing (`com.acme.orders.refund.issued.v1` → `com acme orders refund issued v1`, `orderId` → `order id`), so a search for "refund" finds event types, paths and schema properties.
 
 ## Auth
 
@@ -170,10 +174,11 @@ Nothing company-specific lives in code. This file is the whole customisation sur
 ## Web UI
 
 - **Server-rendered** `html/template` with **htmx** for interactivity, embedded with `embed.FS`. There's no Node toolchain for contributors to install and no separate frontend deployment.
-- **OpenAPI reference docs:** the **Scalar** API reference web component, loaded from embedded static files and fed the version's raw bundle URL.
+- **Progressive:** every page works without JavaScript; htmx only swaps tabs, filters and search results. One hand-written CSS file (dark mode via `prefers-color-scheme`). Strict CSP (`script-src 'self'`).
+- **OpenAPI reference docs:** the **Scalar** API reference web component, loaded from embedded static files and fed one server-bundled document (`/apis/{id}/versions/{v}/openapi.json`, external `$ref`s resolved), cached by content hash.
 - **Events:** our own templates. They show CE attributes, bindings (linked to the broker UI from config), a JSON Schema tree (collapsible, server-rendered), examples, and producer/consumers.
-- **Diff view:** a structured list plus a raw side-by-side text diff (a small embedded JS diff library).
-- Pages: Home/search · API list (filter by team, kind, lifecycle, tag) · API page (overview, docs, versions, lint, dependencies) · Message page · Diff page · Team page · Admin.
+- **Diff view:** a structured list plus a raw text diff computed on the server (a pure-Go Myers diff) and rendered as HTML: per file of the original YAML by default, canonical JSON as a "semantic" option, unchanged regions folded. Both sides are content hashes, so it can be cached forever.
+- Pages: Home/search (`/`, `/search`) · API list (`/apis`, filter by team, kind, lifecycle, tag) · API page (`/apis/{id}/versions/{v}`, the URL `push` prints; tabs: overview, docs, versions, lint, dependencies) · Message page (`/events/{type}`, across APIs) · Diff page (`/apis/{id}/diff?from=&to=`) · Team page · Admin.
 
 ## Portal's own REST API
 

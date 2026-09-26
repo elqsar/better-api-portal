@@ -68,6 +68,9 @@ type APIResult struct {
 	ContentHash     string         `json:"content_hash"`
 	BaselineVersion string         `json:"baseline_version,omitempty"`
 	Changes         []model.Change `json:"changes,omitempty"`
+	// Spec is the parsed spec, with paths relative to the descriptor's
+	// directory; the server indexes it.
+	Spec *model.Spec `json:"-"`
 }
 
 // Run checks the descriptor at descPath and the specs it lists. Problems are
@@ -113,7 +116,7 @@ func Run(descPath string, opts Options) (*Report, error) {
 				File:     res.Doc.Path,
 				Line:     res.Doc.Line,
 			}, cfg)...)
-			result := APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version}
+			result := APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version, Spec: res.Spec}
 			if result.ContentHash, err = contentHash(d.Dir, res.Spec.Files); err != nil {
 				return nil, err
 			}
@@ -147,7 +150,7 @@ func Run(descPath string, opts Options) (*Report, error) {
 				Dir:          filepath.Dir(res.Doc.Path),
 				Environments: envs,
 			}, cfg)...)
-			result := APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version}
+			result := APIResult{ID: api.ID, Score: lint.Score(fs), Version: res.Spec.Version, Spec: res.Spec}
 			if result.ContentHash, err = contentHash(d.Dir, res.Spec.Files); err != nil {
 				return nil, err
 			}

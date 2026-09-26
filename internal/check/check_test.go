@@ -49,6 +49,12 @@ func TestRunExample(t *testing.T) {
 		{ID: "orders-http", Score: 94, Version: "2.3.0", ContentHash: "sha256:9a0ece62bdea04cc8070282535111ec69d89c8e297355cdc8dd506911fc39bc3"},
 		{ID: "orders-events", Score: 98, Version: "1.4.0", ContentHash: "sha256:7bb0bceacabdd16ba201c1a0cad55c6b08fc409eb099233d5dcc0be731d57a21"},
 	}
+	for i := range r.APIs {
+		if r.APIs[i].Spec == nil || r.APIs[i].Spec.Version != r.APIs[i].Version {
+			t.Errorf("%s: no parsed spec", r.APIs[i].ID)
+		}
+		r.APIs[i].Spec = nil // covered by the parsers' golden tests
+	}
 	if !reflect.DeepEqual(r.APIs, wantAPIs) {
 		t.Errorf("apis = %+v, want %+v", r.APIs, wantAPIs)
 	}

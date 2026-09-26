@@ -14,6 +14,8 @@ import (
 	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/model"
+	"better-api-portal/internal/spec/eventcatalog"
+	"better-api-portal/internal/spec/openapi"
 	"better-api-portal/internal/yamldoc"
 )
 
@@ -210,4 +212,58 @@ func BundleAPIs(d *descriptor.Descriptor) (map[string]*bundle.Bundle, []model.Fi
 		bundles[api.ID] = b
 	}
 	return bundles, findings, nil
+}
+
+// ParseBundle parses a stored bundle's spec into the model, without linting
+// or diffing, to reindex a published version. Paths in the model are
+// relative to the bundle's root, as they were at push time.
+func ParseBundle(b *bundle.Bundle) (*model.Spec, error) {
+	tmp, err := os.MkdirTemp("", "portal-parse-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	if err := b.WriteDir(tmp); err != nil {
+		return nil, err
+	}
+	entry := filepath.Join(tmp, filepath.FromSlash(b.Entry))
+	kind, finding, err := descriptor.Sniff(entry)
+	if err != nil {
+		return nil, relError(tmp, tmp, err)
+	}
+	if finding != nil {
+		return nil, fmt.Errorf("%s: %s", b.Entry, finding.Message)
+	}
+	var spec *model.Spec
+	var findings []model.Finding
+	switch kind {
+	case descriptor.KindCloudEvents:
+		res, fs, err := eventcatalog.Parse(tmp, entry)
+		if err != nil {
+			return nil, relError(tmp, tmp, err)
+		}
+		findings = fs
+		if res != nil {
+			spec = res.Spec
+		}
+	case descriptor.KindOpenAPI:
+		res, fs, err := openapi.Parse(tmp, entry)
+		if err != nil {
+			return nil, relError(tmp, tmp, err)
+		}
+		findings = fs
+		if res != nil {
+			spec = res.Spec
+		}
+	default:
+		return nil, fmt.Errorf("%s: %s specs aren't parsed yet", b.Entry, kind)
+	}
+	if spec == nil {
+		msg := "can't be parsed"
+		if len(findings) > 0 {
+			msg = relText(tmp, tmp, findings[0].Message)
+		}
+		return nil, fmt.Errorf("%s: %s", b.Entry, msg)
+	}
+	return spec, nil
 }

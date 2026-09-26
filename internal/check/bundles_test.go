@@ -1,6 +1,7 @@
 package check
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -167,5 +168,29 @@ func TestRunBundlesInvalidDescriptor(t *testing.T) {
 	}
 	if len(errorsOf(r)) == 0 || r.Findings[0].File != DescriptorName {
 		t.Errorf("findings = %+v", r.Findings)
+	}
+}
+
+func TestParseBundle(t *testing.T) {
+	_, bundles := upload(t, example+"/portal.yaml")
+	want, err := Run(example+"/portal.yaml", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range want.APIs {
+		got, err := ParseBundle(bundles[a.ID])
+		if err != nil {
+			t.Fatalf("%s: %v", a.ID, err)
+		}
+		// What a reindex stores is what the push stored.
+		gj, _ := json.Marshal(got)
+		wj, _ := json.Marshal(a.Spec)
+		if string(gj) != string(wj) {
+			t.Errorf("%s: parsed bundle differs:\n%s\nwant\n%s", a.ID, gj, wj)
+		}
+	}
+	bad := &bundle.Bundle{Entry: "api/x.yaml", Files: map[string][]byte{"api/x.yaml": []byte("hello: world\n")}}
+	if _, err := ParseBundle(bad); err == nil {
+		t.Error("expected an error for a spec of no known kind")
 	}
 }
