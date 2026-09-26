@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `6f180f2`
+Last updated: 2026-09-27 · Last commit: `7ebca18`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,8 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–4 (the index, the web
-skeleton with OIDC sign-in, the API list and pages, Scalar docs) are done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–5 (the index, the web
+skeleton with OIDC sign-in, the API list and pages, Scalar docs, the event page) are done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -45,6 +45,7 @@ specs are available yet.
 | 18 | `06eb74f` | Web UI skeleton: layout, embedded static files, OIDC sign-in with PKCE, Postgres sessions, `serve --dev-login` stub provider |
 | 19 | `8a5833f` | API list with filters, API pages (overview, lint & changes, versions), deprecation banner |
 | 20 | `6f180f2` | Docs tab: Scalar (vendored, offline) over a server-resolved single OpenAPI document |
+| 21 | `7ebca18` | Event page `/events/{type}`: CE attributes, payload schema tree, examples, bindings with broker links, owner and consumers; `brokers` config, `descriptor-broker-unknown` |
 
 ### J1/J2 against a portal
 ```sh
@@ -90,13 +91,13 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/diff` | `Events` contract diff, `OpenAPI` (oasdiff adapter) |
 | `internal/policy` | Semver gate, lifecycle, pre-releases, acks |
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
-| `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL) |
+| `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL), CI issuers, OIDC, admins, `brokers` |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
 | `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; `web/devoidc` is the `--dev-login` stub provider |
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
-| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `Dependencies`, `Search` (basic) |
+| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `TypeConsumers`, `Dependencies`, `Search` (basic) |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
@@ -205,6 +206,9 @@ openapi, compat).
     configuration has no teams.
   - `consumes-unknown-api` (warn): server only, and APIs in the same push
     count as known.
+  - `descriptor-broker-unknown` (warn): an environment names a broker
+    that isn't in the configuration. Checked by `check --config` too, and
+    skipped when the configuration has no brokers.
 - **The bundle download** carries `X-Portal-Version`,
   `X-Portal-Content-Hash` and `X-Portal-Lifecycle`, so a check can use it as
   a baseline. It needs the same authentication as push, for now.
@@ -354,8 +358,6 @@ be changed in M3's first commit to match.
     diff against the baseline, with ack reasons inline.
   - Descriptions render as plain text (`white-space: pre-line`), not
     Markdown, for now.
-  - Events on the overview already link to `/events/{type}`, which is
-    step 5; until then those links 404.
   - Web pages are tested against Postgres (`pages_integration_test.go`),
     publishing through the real push API; the in-memory store only
     covers sign-in.
@@ -380,8 +382,36 @@ be changed in M3's first commit to match.
     stay empty (Scalar hydrates otherwise).
   - Scalar's API client ("Test request") is hidden: the CSP would block
     calls to the API's servers anyway.
+- **Event page (step 5, done):**
+  - `/events/{type}`: the declaring APIs come from `store.MessageRoles`
+    (latest versions only), the consumers from `store.TypeConsumers`:
+    `consumes` entries naming the type, or naming a declaring API with no
+    `types`. 404 only when neither exists; a type that is only consumed
+    renders with a "no producer published" banner.
+  - Any second declaration, whatever its role, is a `ce-type-unique`
+    conflict (03-formats: `receives` owns the contract too). The page
+    shows the first (produces before receives, then by id) under an error
+    banner listing the others.
+  - Attributes, bindings and examples come from `version_models`. The
+    schema documents aren't in it (`Schema.Doc` is `json:"-"`), so the
+    tree re-parses the bundle with `check.ParseBundle`; parsed specs are
+    cached by content hash (the generic `cache[V]`, 32 entries, shared
+    with the OpenAPI documents). If that fails, the rest of the page still
+    renders, with the error in place of the tree.
+  - The tree (`web/schema.go`) is nested `<details>`, no JS, two levels
+    open. `$ref`s resolve through `compat.Schema` (new exported `Top`,
+    `Follow`, `Node.Child`), so it follows the same bundle rules as the
+    compat checker. Properties are sorted by name (maps lose the file's
+    order). Recursion stops with a note; 16 levels and 1,500 nodes at
+    most. The referring schema's description wins over the target's.
+  - Bindings link to a broker's `ui` for each of the owning API's
+    environments on a broker of the binding's protocol. Binding props
+    show as strings, or compact JSON for anything else.
+  - `brokers` in `portal.config.yaml`: `name` (unique, required),
+    `protocol`, `ui` (URL); protocol fields (`bootstrap`, `account`, …)
+    are kept raw in `Settings`. The example config's kafka-prod got a `ui`.
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
-  skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page;
+  skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page (done);
   (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
   tests with golden HTML.
 
@@ -428,11 +458,17 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–4
-are done. Next is step 5: the event page, `/events/{type}` across APIs:
-CloudEvents attributes, the payload schema as a server-rendered collapsible
-tree (from the bundle), examples, bindings linked to the broker UI from
-config, and who produces and receives the type (`store.MessageRoles`).
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–5
+are done. Next is step 6: search (`/search`, the home page box), with
+trigram matching on titles, ranking by lifecycle, and the 500-API benchmark.
+
+Then, while the rows are fresh: the server rules `ce-type-unique` and
+`ce-topic-single-owner` in the push verdict, next to `consumes-unknown-api`
+(the event page already shows `ce-type-unique` conflicts).
+
+Parallel track, for M2's pilot: a `go install`-able module path, a release
+task and a Containerfile, so the example workflow stops needing
+`vars.PORTAL_CLI_URL` (see "Known gaps").
 
 ## Known gaps
 
@@ -447,6 +483,11 @@ config, and who produces and receives the type (`store.MessageRoles`).
   `--dry-run` or `--baseline-from`.
 - `server.publicURL` unset means push results carry paths, not URLs.
 - `portal diff` doesn't take bundles yet, only spec files.
+- **An `unchanged` push doesn't update the API's metadata.** A push whose
+  version and hash are already published returns early, so a
+  descriptor-only change (`consumes`, links, lifecycle, environments)
+  reaches the portal only with the spec's next version. Seen while testing
+  the event page's consumers.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented yet: `ce-type-unique` and
   `ce-topic-single-owner`. The rows they need (`messages`, `bindings`) exist
