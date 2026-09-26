@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-25 · Last commit: `7800aca`
+Last updated: 2026-09-26 · Last commit: `c882e39`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -8,8 +8,9 @@ and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
 ## Where we are
 
 We're partway through milestone **M1: `portal check` (offline)**. Event
-catalogues get the full pipeline. OpenAPI is parsed and linted but not
-diffed yet.
+catalogues and OpenAPI both get the full pipeline: parse, lint, diff against
+`--baseline`, then the semver gate. Bundling and SARIF/JUnit output are still
+missing.
 
 | # | Commit | What |
 |---|---|---|
@@ -20,14 +21,18 @@ diffed yet.
 | 4 | `e4e1e3c` | JSON Schema compatibility checker (`internal/compat`), every row of the governance table tested |
 | 5 | `952c256` | Event contract diff, `--baseline`, `portal diff`, semver gate, `--ack` |
 | 6 | `7800aca` | OpenAPI → model, `openapi-default` lint (vacuum recommended + org + security rules) |
+| 7 | `efe5c77` | vacuum decision: keep it, drop `oas3-missing-example` and `component-description` |
+| 8 | `c882e39` | OpenAPI diff with oasdiff: `--baseline`, `portal diff`, `BRK-OA-` ids |
 
-### J2 for events, today
+### J2, today (events and OpenAPI)
 ```sh
 git worktree add ../base main
 portal check --config portal.config.yaml --baseline ../base/portal.yaml
-# a breaking change without a major bump → exit 1 with an id such as BRK-CE-811dea
+# a breaking change without a major bump → exit 1 with an id such as
+# BRK-CE-811dea (events) or BRK-OA-29783f (OpenAPI)
 portal check ... --ack BRK-CE-811dea --ack-reason "why it is safe"
-portal diff old/events.yaml new/events.yaml   # exit 1 if any change is breaking
+portal diff old/events.yaml new/events.yaml     # exit 1 if any change is breaking
+portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 ```
 
 ## Code map
@@ -44,7 +49,7 @@ portal diff old/events.yaml new/events.yaml   # exit 1 if any change is breaking
 | `internal/model` | `Spec`, `Message`, `Binding`, `Operation`, `Schema`, `Finding`, `Change` |
 | `internal/lint` | `CloudEvents`, `OpenAPI` (vacuum + native), `Score` |
 | `internal/compat` | `Check(old, new, mode)`, which reduces to the subset test `sub(A,B)`; `Fingerprint` |
-| `internal/diff` | `Events` contract diff, `SameContent` |
+| `internal/diff` | `Events` contract diff, `OpenAPI` (oasdiff adapter), `SameContent` |
 | `internal/policy` | Semver gate, lifecycle, pre-releases, acks |
 | `internal/report` | Text and JSON output |
 | `internal/config` | Minimal `portal.config.yaml` (org prefix, teams) |
@@ -75,6 +80,14 @@ openapi, compat).
   403.
 - **`org-operation-id`** checks camelCase only. Missing or duplicate ids are
   left to vacuum's rules, so they aren't counted twice.
+- **OpenAPI diff levels:** oasdiff `ERR`/`WARN`/`INFO` become
+  breaking/warn/additive. Two levels are overridden to match the governance
+  table: removing an optional response field is breaking, and a new response
+  enum value is a warning. oasdiff's version checks are dropped, since
+  `internal/policy` owns semver. The kin-openapi loader only reads files in
+  the bundle closure. The ids are `BRK-OA-`, using the same hash as the events
+  ids. oasdiff costs about 6 MB (80.2 → 86.3 MB with a plain `go build`) and
+  56 modules (145 → 201).
 - **Native OpenAPI schema rules** only cover the entry file. vacuum covers
   external files.
 - **vacuum stays** (decided 2026-09-26). It costs a lot: the binary grows
@@ -87,16 +100,13 @@ openapi, compat).
 
 ## Next steps
 
-1. **OpenAPI diff** with oasdiff: `diff.OpenAPI`, `--baseline` / `portal diff`
-   for OpenAPI. Reuse `internal/policy` unchanged, and remove the
-   `diff-unsupported` info.
-2. **Bundling + content hash** (`internal/bundle`): canonicalise, sha256 and
+1. **Bundling + content hash** (`internal/bundle`): canonicalise, sha256 and
    tar.zst. This replaces `diff.SameContent` and lets `--baseline` accept a
    bundle.
-3. **SARIF / JUnit output** (J2 acceptance: PR annotations).
-4. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
+2. **SARIF / JUnit output** (J2 acceptance: PR annotations).
+3. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
    prefix) and tune the rulesets.
-5. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
+4. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
 
 ## Known gaps
 
@@ -106,6 +116,9 @@ openapi, compat).
   ids.
 - There are no rulesets from files, no severity overrides and no
   `warn-until` (M5).
+- OpenAPI changes carry no `Field`: oasdiff's arguments aren't parsed into
+  one. Changes that aren't tied to an operation point at the document, with
+  no line.
 - `compat` on OpenAPI component schemas: fragment-only `$ref`s inside a
   component would resolve against the component rather than the file.
   That's irrelevant until OpenAPI schemas go through `compat`; oasdiff is
