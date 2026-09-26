@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `8a5833f`
+Last updated: 2026-09-26 · Last commit: `6f180f2`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,8 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–3 (the index, the web
-skeleton with OIDC sign-in, the API list and pages) are done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–4 (the index, the web
+skeleton with OIDC sign-in, the API list and pages, Scalar docs) are done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -44,6 +44,7 @@ specs are available yet.
 | 17 | `62b0a3c` | M3 index: `version_models`, message/operation/binding rows, `dependencies`, `search_docs`, `latest_version_id`; `portal reindex` |
 | 18 | `06eb74f` | Web UI skeleton: layout, embedded static files, OIDC sign-in with PKCE, Postgres sessions, `serve --dev-login` stub provider |
 | 19 | `8a5833f` | API list with filters, API pages (overview, lint & changes, versions), deprecation banner |
+| 20 | `6f180f2` | Docs tab: Scalar (vendored, offline) over a server-resolved single OpenAPI document |
 
 ### J1/J2 against a portal
 ```sh
@@ -358,8 +359,29 @@ be changed in M3's first commit to match.
   - Web pages are tested against Postgres (`pages_integration_test.go`),
     publishing through the real push API; the in-memory store only
     covers sign-in.
+- **Docs (step 4, done):**
+  - `/apis/{id}/versions/{v}/openapi.json` is a UI route (session auth),
+    not `/api/v1`: the REST API still takes CI credentials only.
+    `openapi.Document` loads the bundle with kin-openapi from memory,
+    then `InternalizeRefs`; 3.1 round-trips. ETag = content hash +
+    `documentVersion` (bump it when the output changes); 32 documents
+    cached in memory.
+  - Scalar 1.72.1 `standalone.js` is vendored as `static/scalar.js`
+    (4.4 MB, served gzipped at 1.3 MB); the binary is now 100.9 MB. To
+    upgrade: replace the file, update `LICENSES.txt`, and recheck
+    `docs.js`'s options against the new version (fonts, telemetry,
+    agent, MCP, `externalUrls`).
+  - The Docs page's CSP adds `style-src 'nonce-…'` with a
+    `<meta property="csp-nonce">`, which Scalar reads for its injected
+    stylesheet. Scripts stay `'self'` only.
+  - `app.css` is `@layer portal { … @scope (body) to (.scalar-app) { … } }`.
+    New rules go inside the scope unless they must style `body`.
+  - The Docs tab is a full page load (no `hx-get`). The mount point must
+    stay empty (Scalar hydrates otherwise).
+  - Scalar's API client ("Test request") is hidden: the CSP would block
+    calls to the API's servers anyway.
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
-  skeleton + login (done); (3) API list/page (done); (4) Scalar docs; (5) event page;
+  skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page;
   (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
   tests with golden HTML.
 
@@ -406,12 +428,11 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–3
-are done. Next is step 4: the Docs tab. The server resolves a version's
-bundle into one OpenAPI document (`/apis/{id}/versions/{v}/openapi.json`,
-cached by content hash) and embeds Scalar (pinned, from embedded static
-files) to render it; that needs `/api/v1`-style reads to accept the session
-cookie, or a UI route for the document.
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–4
+are done. Next is step 5: the event page, `/events/{type}` across APIs:
+CloudEvents attributes, the payload schema as a server-rendered collapsible
+tree (from the bundle), examples, bindings linked to the broker UI from
+config, and who produces and receives the type (`store.MessageRoles`).
 
 ## Known gaps
 
