@@ -37,11 +37,11 @@ Rulesets are **vacuum / Spectral-format YAML** files in the portal config, so th
 
 | Ruleset | Contents |
 |---|---|
-| `openapi-default` | vacuum `recommended` + org rules (below) + the curated security subset |
+| `openapi-default` | vacuum `recommended` without `oas3-missing-example` and `component-description` + org rules (below) + the curated security subset |
 | `asyncapi-default` | vacuum AsyncAPI rules + org rules on the normalised model |
 | `cloudevents-default` | Portal-native Go rules (below). vacuum doesn't know this format. |
 
-**The OWASP rules are curated, not enabled wholesale.** Measured on our [example spec](examples/orders-service/api/openapi.yaml) with vacuum v0.30.6: `recommended` scores 96/100 with 0 errors, while hard mode (every OWASP rule) scores 10/100 with 14 errors, mostly rate-limit headers on every response and mandatory 429/500 responses. Turning on everything would train teams to ignore the linter. The security subset starts as:
+**The OWASP rules are curated, not enabled wholesale.** Measured on our [example spec](examples/orders-service/api/openapi.yaml) with vacuum v0.30.6: `recommended` scores 96/100 with 0 errors by vacuum's own scoring, while hard mode (every OWASP rule) scores 10/100 with 14 errors, mostly rate-limit headers on every response and mandatory 429/500 responses. Turning on everything would train teams to ignore the linter. By the same reasoning, `openapi-default` leaves out the two `recommended` rules that made 12 of its 13 warnings on the example (missing examples and missing component descriptions). The portal's score for the example (100 − 10 per error − 2 per warning) is 94. The security subset starts as:
 
 | Rule | Severity |
 |---|---|

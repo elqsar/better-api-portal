@@ -23,7 +23,8 @@ func TestRunExample(t *testing.T) {
 	}
 	// Recorded from a run with vacuum v0.30.6: no errors; the events API
 	// deliberately leaves one produced event undescribed, and the HTTP API
-	// gets vacuum's recommended warnings plus two unbounded integers.
+	// gets one warning from vacuum's trimmed recommended ruleset plus two
+	// unbounded integers.
 	counts := map[string]int{}
 	for _, f := range r.Findings {
 		if f.Severity != model.SeverityWarn {
@@ -34,14 +35,12 @@ func TestRunExample(t *testing.T) {
 	want := map[string]int{
 		"orders-events ce-description":      1,
 		"orders-http sec-integer-bounds":    2,
-		"orders-http oas3-missing-example":  8,
-		"orders-http component-description": 4,
 		"orders-http operation-description": 1,
 	}
 	if !reflect.DeepEqual(counts, want) {
 		t.Errorf("findings = %v, want %v", counts, want)
 	}
-	wantAPIs := []APIResult{{ID: "orders-http", Score: 70, Version: "2.3.0"}, {ID: "orders-events", Score: 98, Version: "1.4.0"}}
+	wantAPIs := []APIResult{{ID: "orders-http", Score: 94, Version: "2.3.0"}, {ID: "orders-events", Score: 98, Version: "1.4.0"}}
 	if !reflect.DeepEqual(r.APIs, wantAPIs) {
 		t.Errorf("apis = %+v, want %+v", r.APIs, wantAPIs)
 	}

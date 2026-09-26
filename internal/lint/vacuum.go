@@ -13,9 +13,20 @@ import (
 	"better-api-portal/internal/yamldoc"
 )
 
-// recommended is vacuum's built-in OpenAPI ruleset, built once.
+// disabledVacuumRules are left out of vacuum's recommended ruleset. They made
+// 12 of the 13 warnings on the example spec: noise that teaches teams to
+// ignore the linter (D8), and it costs 2 points per missing example.
+var disabledVacuumRules = []string{"oas3-missing-example", "component-description"}
+
+// recommended is vacuum's built-in OpenAPI ruleset minus disabledVacuumRules,
+// built once.
 var recommended = sync.OnceValue(func() *rulesets.RuleSet {
-	return rulesets.BuildDefaultRuleSets().GenerateOpenAPIRecommendedRuleSet()
+	rs := rulesets.BuildDefaultRuleSets().GenerateOpenAPIRecommendedRuleSet()
+	for _, id := range disabledVacuumRules {
+		delete(rs.Rules, id)
+		delete(rs.RuleDefinitions, id)
+	}
+	return rs
 })
 
 // runVacuum lints the entry file with vacuum's recommended rules. Remote

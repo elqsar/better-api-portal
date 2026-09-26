@@ -158,6 +158,17 @@ func TestVacuumSmoke(t *testing.T) {
 	}
 }
 
+func TestVacuumDisabledRules(t *testing.T) {
+	// cleanOAS has no examples and no component descriptions.
+	for _, f := range OpenAPI(parseOAS(t, cleanOAS), Config{}) {
+		for _, id := range disabledVacuumRules {
+			if f.RuleID == id {
+				t.Errorf("disabled rule fired: %+v", f)
+			}
+		}
+	}
+}
+
 func TestJSONPathToPointer(t *testing.T) {
 	tests := map[string]string{
 		"$":                             "",
