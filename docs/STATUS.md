@@ -1,17 +1,21 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `4c5d84b`
+Last updated: 2026-09-26 · Last commit: `9cc547a`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
 
 ## Where we are
 
-We're partway through milestone **M1: `portal check` (offline)**. Event
-catalogues and OpenAPI both get the full pipeline: parse, lint, diff against
-`--baseline`, then the semver gate. Specs are bundled with a content hash.
-Reports come as text, JSON, SARIF and JUnit. What's left of M1 is tuning
-against real specs.
+Milestone **M1: `portal check` (offline)** is done: its "done when" from
+the roadmap (green on `docs/spec/examples/`, a golden test for every row of
+the compat table) is met. Event catalogues and OpenAPI both get the full
+pipeline: parse, lint, diff against `--baseline`, then the semver gate. Specs
+are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
+
+Next is **M2: registry + push**, starting with the Postgres store. Tuning
+against real specs moves to M5, as the roadmap schedules it, because no real
+specs are available yet.
 
 | # | Commit | What |
 |---|---|---|
@@ -61,8 +65,11 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/policy` | Semver gate, lifecycle, pre-releases, acks |
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | Minimal `portal.config.yaml` (org prefix, teams) |
+| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push in one transaction |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
+Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
+`task psql`, `task test:integration`; `task dev:db:down` wipes it.
 Golden files are regenerated with `go test ./<pkg> -update` (eventcatalog,
 openapi, compat).
 
@@ -115,6 +122,25 @@ openapi, compat).
   orders-http now scores 94, up from 70. The spec's "96/100" was vacuum's own
   score.
 
+## Decisions (store)
+
+- **Tables in M2** are only what push and the gate need: teams, repos, apis,
+  bundles, versions, lint/diff reports, CI tokens, audit. The normalised
+  model rows, `search_docs`, `dependencies` and `jobs` come with M3; they can
+  be rebuilt from the stored bundles.
+- **Immutability** is a partial unique index on `(api_id, semver)` for
+  published versions only, so a rejected push can be fixed and retried
+  under the same version.
+- **Claims** are made by the push's own insert of the `apis` row
+  (`ON CONFLICT … WHERE repo_id matches`), so a claim race can't give an id
+  two owners. A rejected push still claims and creates the row (versions
+  need it), but only a published push updates the metadata.
+- **Latest** is chosen by semver in Go (`x/mod/semver`), not by insertion
+  order.
+- pgx + goose cost 6.8 MB (87.4 → 94.2 MB) and 8 linked modules (76 → 84).
+  `modernc.org/sqlite` in the binary comes from vacuum (`pb33f/doctor`), not
+  goose.
+
 ## Decisions (reports)
 
 - **JUnit failures match the exit code.** Errors are failures, and warnings
@@ -136,14 +162,27 @@ openapi, compat).
 
 ## Next steps
 
-1. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
-   prefix) and tune the rulesets.
-2. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
+**M2**, one commit per step (CI auth targets GitHub Actions first, per the
+Q1 default):
+
+1. ~~`internal/store`~~ done: pgx + goose, `portal migrate`, `task dev:db`.
+2. `internal/check` over in-memory bundles: baselines and uploaded specs from
+   `*bundle.Bundle`, still pure.
+3. `portal serve` + `POST /api/v1/push` and `/check`, `GET …/bundle`, with
+   auth behind an interface: idempotency, immutability, a baseline from the
+   store, one transaction per API.
+4. `internal/auth`: GitHub Actions OIDC (`ci.trustedIssuers`, `allowedRefs`),
+   claims, fallback static tokens (`portal admin token create`).
+5. `portal push` (ID token or `PORTAL_TOKEN`), `check --baseline-from URL`, a
+   GitHub Actions example workflow.
+6. End-to-end test: publish, then reject a breaking change, then a no-op
+   retry.
 
 ## Known gaps
 
+- Real-spec tuning (Q7: `oneOf` usage, Q6: type prefix) is pending access
+  to company specs; scheduled for M5.
 - `portal diff` doesn't take bundles yet, only spec files.
-
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented: `ce-type-unique`,
   `ce-topic-single-owner`, owner-team existence, and unknown `consumes`
