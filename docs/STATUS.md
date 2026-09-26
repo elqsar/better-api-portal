@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `c882e39`
+Last updated: 2026-09-26 · Last commit: `1b600e3`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -9,8 +9,8 @@ and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
 
 We're partway through milestone **M1: `portal check` (offline)**. Event
 catalogues and OpenAPI both get the full pipeline: parse, lint, diff against
-`--baseline`, then the semver gate. Bundling and SARIF/JUnit output are still
-missing.
+`--baseline`, then the semver gate. Specs are bundled with a content hash.
+SARIF/JUnit output is still missing.
 
 | # | Commit | What |
 |---|---|---|
@@ -23,6 +23,7 @@ missing.
 | 6 | `7800aca` | OpenAPI → model, `openapi-default` lint (vacuum recommended + org + security rules) |
 | 7 | `efe5c77` | vacuum decision: keep it, drop `oas3-missing-example` and `component-description` |
 | 8 | `c882e39` | OpenAPI diff with oasdiff: `--baseline`, `portal diff`, `BRK-OA-` ids |
+| 9 | `1b600e3` | Bundles: content hash, deterministic tar.zst, `portal bundle`, `--baseline id=bundle` |
 
 ### J2, today (events and OpenAPI)
 ```sh
@@ -31,6 +32,8 @@ portal check --config portal.config.yaml --baseline ../base/portal.yaml
 # a breaking change without a major bump → exit 1 with an id such as
 # BRK-CE-811dea (events) or BRK-OA-29783f (OpenAPI)
 portal check ... --ack BRK-CE-811dea --ack-reason "why it is safe"
+portal bundle --out base/                       # base/<api-id>.tar.zst + content hashes
+portal check --baseline orders-http=base/orders-http.tar.zst   # per-API bundle baseline
 portal diff old/events.yaml new/events.yaml     # exit 1 if any change is breaking
 portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 ```
@@ -39,17 +42,17 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 | Package | Role |
 |---|---|
-| `cmd/portal` | cobra CLI: `check`, `diff` |
+| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle` |
 | `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
-| `internal/bundle` | `$ref` file closure (remote refs, escapes and missing files are problems); `RelTo` |
+| `internal/bundle` | `$ref` file closure (remote refs, escapes and missing files are problems); `RelTo`; `Bundle`: `Hash`, `Pack`/`Unpack` tar.zst |
 | `internal/spec/eventcatalog` | `events.yaml` → `model.Spec`, plus the compiled payload schemas |
 | `internal/spec/openapi` | OpenAPI 3.0/3.1 → `model.Spec` (built from the raw docs, not libopenapi) |
 | `internal/model` | `Spec`, `Message`, `Binding`, `Operation`, `Schema`, `Finding`, `Change` |
 | `internal/lint` | `CloudEvents`, `OpenAPI` (vacuum + native), `Score` |
 | `internal/compat` | `Check(old, new, mode)`, which reduces to the subset test `sub(A,B)`; `Fingerprint` |
-| `internal/diff` | `Events` contract diff, `OpenAPI` (oasdiff adapter), `SameContent` |
+| `internal/diff` | `Events` contract diff, `OpenAPI` (oasdiff adapter) |
 | `internal/policy` | Semver gate, lifecycle, pre-releases, acks |
 | `internal/report` | Text and JSON output |
 | `internal/config` | Minimal `portal.config.yaml` (org prefix, teams) |
@@ -60,8 +63,17 @@ openapi, compat).
 
 ## Decisions taken where the spec was silent
 
-- **`--baseline`** takes the *previous version's `portal.yaml`*. APIs are
-  matched by id. Bundles will be accepted later.
+- **`--baseline`** can be repeated. It takes at most one previous
+  `portal.yaml`, with APIs matched by id, plus any number of
+  `api-id=bundle.tar.zst`, which take precedence. Bundles carry no lifecycle,
+  so `lifecycle-reversal` isn't checked against them. They're unpacked into
+  a temporary directory that is removed after the run.
+- **Content hash** (see 05-architecture, "Bundle format"): sha256 over paths
+  plus canonical JSON. Formatting and comments don't count, so a change to
+  those alone no longer demands a version bump. That matches the server's
+  immutability by hash. `TestRunExample` pins the example's hashes, so a
+  change to the canonical form fails loudly. The manifest sits at
+  `.portal/manifest.json`, so spec files may not live under `.portal/`.
 - **Compat footnote.** "The other side's `additionalProperties: false`" is read
   as the side that must *accept* the instance.
 - **Unsupported keywords** are compared raw. Annotations are ignored only at
@@ -100,15 +112,14 @@ openapi, compat).
 
 ## Next steps
 
-1. **Bundling + content hash** (`internal/bundle`): canonicalise, sha256 and
-   tar.zst. This replaces `diff.SameContent` and lets `--baseline` accept a
-   bundle.
-2. **SARIF / JUnit output** (J2 acceptance: PR annotations).
-3. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
+1. **SARIF / JUnit output** (J2 acceptance: PR annotations).
+2. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
    prefix) and tune the rulesets.
-4. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
+3. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
 
 ## Known gaps
+
+- `portal diff` doesn't take bundles yet, only spec files.
 
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented: `ce-type-unique`,
