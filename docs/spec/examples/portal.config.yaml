@@ -16,4 +16,4 @@ ci:
       allowedRefs: ["refs/heads/main", "refs/tags/*"]
 brokers:
   - { name: kafka-staging, protocol: kafka, bootstrap: kafka.staging.internal:9093 }
-  - { name: kafka-prod, protocol: kafka, bootstrap: kafka.prod.internal:9093 }
+  - { name: kafka-prod, protocol: kafka, bootstrap: kafka.prod.internal:9093, ui: https://kafka-ui.internal/prod }

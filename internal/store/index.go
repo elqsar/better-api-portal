@@ -209,13 +209,16 @@ func (s *Store) Model(ctx context.Context, versionID int64) (*model.Spec, error)
 type MessageRole struct {
 	APIID, Role, Semver string
 	Deprecated          bool
+	// VersionID and ContentHash locate the version's model and bundle.
+	VersionID   int64
+	ContentHash string
 }
 
 // MessageRoles lists the APIs whose latest version declares the message
 // type, with their role (J4: who produces and who receives it).
 func (s *Store) MessageRoles(ctx context.Context, msgType string) ([]MessageRole, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT m.api_id, m.role, v.semver, m.deprecated
+		SELECT m.api_id, m.role, v.semver, m.deprecated, v.id, v.content_hash
 		FROM messages m
 		JOIN apis a ON a.latest_version_id = m.version_id
 		JOIN versions v ON v.id = m.version_id
@@ -226,8 +229,26 @@ func (s *Store) MessageRoles(ctx context.Context, msgType string) ([]MessageRole
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (MessageRole, error) {
 		var x MessageRole
-		err := r.Scan(&x.APIID, &x.Role, &x.Semver, &x.Deprecated)
+		err := r.Scan(&x.APIID, &x.Role, &x.Semver, &x.Deprecated, &x.VersionID, &x.ContentHash)
 		return x, err
+	})
+}
+
+// TypeConsumers lists the APIs that declare they consume the message type:
+// by naming it, or by consuming the whole of an API in owners, the APIs
+// that declare the type.
+func (s *Store) TypeConsumers(ctx context.Context, msgType string, owners []string) ([]Dependency, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT from_api, to_api, types FROM dependencies
+		WHERE $1 = ANY(types) OR (cardinality(types) = 0 AND to_api = ANY($2))
+		ORDER BY from_api, to_api`, msgType, owners)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Dependency, error) {
+		var d Dependency
+		err := r.Scan(&d.From, &d.To, &d.Types)
+		return d, err
 	})
 }
 

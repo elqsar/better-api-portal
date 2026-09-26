@@ -74,7 +74,8 @@ func TestIndex(t *testing.T) {
 		t.Fatalf("model = %+v, %v", m, err)
 	}
 	roles, err := s.MessageRoles(ctx, "com.acme.orders.order.created.v1")
-	if err != nil || len(roles) != 1 || roles[0] != (store.MessageRole{APIID: "orders-events", Role: "produces", Semver: "1.4.0"}) {
+	if err != nil || len(roles) != 1 || roles[0] != (store.MessageRole{APIID: "orders-events", Role: "produces", Semver: "1.4.0",
+		VersionID: v1, ContentHash: "sha256:a"}) {
 		t.Errorf("roles = %+v, %v", roles, err)
 	}
 	consumes, consumers, err := s.Dependencies(ctx, "orders-events")
@@ -84,6 +85,13 @@ func TestIndex(t *testing.T) {
 	}
 	if _, consumers, _ := s.Dependencies(ctx, "payments-events"); len(consumers) != 1 {
 		t.Errorf("payments-events consumers = %+v", consumers)
+	}
+	// Consumers of a type name it, or take the whole API that declares it.
+	if deps, err := s.TypeConsumers(ctx, "com.acme.payments.captured.v1", nil); err != nil || len(deps) != 1 || deps[0].From != "orders-events" {
+		t.Errorf("type consumers = %+v, %v", deps, err)
+	}
+	if deps, err := s.TypeConsumers(ctx, "com.acme.payments.refunded.v1", []string{"payments-events"}); err != nil || len(deps) != 0 {
+		t.Errorf("type consumers of another type = %+v, %v", deps, err)
 	}
 
 	// The HTTP API is searchable too; identifiers are split, words stemmed.

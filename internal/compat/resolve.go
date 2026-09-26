@@ -30,6 +30,34 @@ func FromSpec(s *model.Spec, payload string) Schema {
 	return Schema{Docs: docs, Root: payload}
 }
 
+// Node is a schema value and where it lives, for walking a schema outside
+// this package, as the web UI's schema tree does.
+type Node struct {
+	Value any
+	at    loc
+}
+
+// Key identifies where the node lives, e.g. for cycle detection.
+func (n Node) Key() string { return n.at.res + "|" + n.at.frag }
+
+// Top returns the payload's root schema.
+func (s Schema) Top() (Node, error) {
+	n, err := s.root()
+	return Node{n.v, n.at}, err
+}
+
+// Follow resolves a $ref found in the node from.
+func (s Schema) Follow(from Node, ref string) (Node, error) {
+	n, err := s.resolve(from.at, ref)
+	return Node{n.v, n.at}, err
+}
+
+// Child wraps v, the subschema of n at the keyword path tokens, such as
+// ("properties", "total"), so refs inside it resolve from the right place.
+func (n Node) Child(v any, tokens ...string) Node {
+	return Node{v, n.at.child(tokens...)}
+}
+
 // loc is where a schema node lives: a resource and a JSON pointer inside it.
 type loc struct {
 	res  string

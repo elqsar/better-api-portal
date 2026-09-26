@@ -506,3 +506,21 @@ func TestRunUnknownOwner(t *testing.T) {
 		t.Errorf("errors = %v", errs)
 	}
 }
+
+func TestRunUnknownBroker(t *testing.T) {
+	_, head := baselinePair(t, map[string][2]string{"portal.yaml": {"broker: kafka-staging", "broker: kafka-nope"}})
+	cfg := &config.Config{Brokers: []config.Broker{{Name: "kafka-prod"}}}
+	r, err := Run(head, Options{Config: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range r.Findings {
+		if f.RuleID == "descriptor-broker-unknown" {
+			got = append(got, f.API+" "+f.Pointer+" "+string(f.Severity))
+		}
+	}
+	if want := []string{"orders-events /apis/1/environments/0/broker warn"}; !slices.Equal(got, want) {
+		t.Errorf("broker findings = %q, want %q", got, want)
+	}
+}

@@ -2,6 +2,8 @@ package web
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -14,37 +16,50 @@ import (
 // openapi.Document's output changes, so browsers refetch.
 const documentVersion = "1"
 
-// docCache keeps the latest resolved documents by content hash. They are
-// immutable, so there's nothing to invalidate.
-type docCache struct {
+// cache keeps the latest values derived from bundles, by content hash.
+// Bundles are immutable, so there's nothing to invalidate.
+type cache[V any] struct {
 	mu    sync.Mutex
-	docs  map[string][]byte
+	items map[string]V
 	order []string
 }
 
-const docCacheSize = 32
+const cacheSize = 32
 
-func (c *docCache) get(hash string) []byte {
+func (c *cache[V]) get(hash string) (V, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.docs[hash]
+	v, ok := c.items[hash]
+	return v, ok
 }
 
-func (c *docCache) put(hash string, doc []byte) {
+func (c *cache[V]) put(hash string, v V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.docs == nil {
-		c.docs = map[string][]byte{}
+	if c.items == nil {
+		c.items = map[string]V{}
 	}
-	if _, ok := c.docs[hash]; ok {
+	if _, ok := c.items[hash]; ok {
 		return
 	}
-	if len(c.order) == docCacheSize {
-		delete(c.docs, c.order[0])
+	if len(c.order) == cacheSize {
+		delete(c.items, c.order[0])
 		c.order = c.order[1:]
 	}
-	c.docs[hash] = doc
+	c.items[hash] = v
 	c.order = append(c.order, hash)
+}
+
+// unpack loads a stored bundle.
+func (s *Server) unpack(ctx context.Context, hash string) (*bundle.Bundle, error) {
+	data, err := s.Store.Bundle(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, fmt.Errorf("bundle %s is missing", hash)
+	}
+	return bundle.Unpack(bytes.NewReader(data))
 }
 
 // apiDocs is the Docs tab: Scalar renders the version's OpenAPI document.
@@ -84,14 +99,9 @@ func (s *Server) openAPIDocument(w http.ResponseWriter, r *http.Request, u *User
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	doc := s.docs.get(hash)
-	if doc == nil {
-		data, err := s.Store.Bundle(r.Context(), hash)
-		if err != nil || data == nil {
-			s.fail(w, r, u, err)
-			return
-		}
-		b, err := bundle.Unpack(bytes.NewReader(data))
+	doc, ok := s.docs.get(hash)
+	if !ok {
+		b, err := s.unpack(r.Context(), hash)
 		if err != nil {
 			s.fail(w, r, u, err)
 			return

@@ -94,6 +94,7 @@ func Run(descPath string, opts Options) (*Report, error) {
 	if opts.Config != nil {
 		cfg.EventTypePrefix = opts.Config.Org.EventTypePrefix
 		r.Findings = append(r.Findings, unknownOwners(d, opts.Config)...)
+		r.Findings = append(r.Findings, unknownBrokers(d, opts.Config)...)
 	}
 	for i, api := range d.APIs {
 		if !d.SpecOK(i) {
@@ -201,6 +202,27 @@ func unknownOwners(d *descriptor.Descriptor, cfg *config.Config) []model.Finding
 		fs = append(fs, model.Finding{RuleID: "descriptor-owner-unknown", Severity: model.SeverityError,
 			Message: fmt.Sprintf("owner %s is not a team in the portal configuration", d.Owner),
 			File:    d.Path, Pointer: "/owner", Line: d.Line("/owner")})
+	}
+	return fs
+}
+
+// unknownBrokers warns about environments naming a broker the
+// configuration doesn't have. Nothing is checked without brokers in it.
+func unknownBrokers(d *descriptor.Descriptor, cfg *config.Config) []model.Finding {
+	if len(cfg.Brokers) == 0 {
+		return nil
+	}
+	var fs []model.Finding
+	for i, api := range d.APIs {
+		for j, env := range api.Environments {
+			if env.Broker == "" || cfg.Broker(env.Broker) != nil {
+				continue
+			}
+			ptr := fmt.Sprintf("/apis/%d/environments/%d/broker", i, j)
+			fs = append(fs, model.Finding{API: api.ID, RuleID: "descriptor-broker-unknown", Severity: model.SeverityWarn,
+				Message: fmt.Sprintf("broker %s is not in the portal configuration", env.Broker),
+				File:    d.Path, Pointer: ptr, Line: d.Line(ptr)})
+		}
 	}
 	return fs
 }

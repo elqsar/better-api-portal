@@ -306,3 +306,66 @@ func TestDocs(t *testing.T) {
 		t.Errorf("anonymous document: %d", code)
 	}
 }
+
+func TestEventPage(t *testing.T) {
+	s := newSite(t)
+	s.push()
+	c := s.browser()
+
+	code, body, _ := s.get(c, "/events/com.acme.orders.order.created.v1")
+	if code != 200 {
+		t.Fatalf("event: %d\n%s", code, body)
+	}
+	contains(t, "event", body,
+		`Produced by
+    <a href="/apis/orders-events/versions/1.4.0">orders-events</a> 1.4.0`,
+		"An order was placed.", "<dt>source</dt><dd><code>/orders-service/{region}</code>", "<code>partitionkey</code>",
+		// The payload tree, with the $ref to another file resolved.
+		`<span class="s-name">total</span>`, "→ ./money.json", `<span class="s-name">amount</span>`, "Minor units, e.g. cents.",
+		`<span class="s-name">quantity</span>`, "≥ 1",
+		// Examples, bindings and the brokers of the API's environments.
+		"ord_123", "<code>orders.events</code>", "mode:</span> <code>binary</code>",
+		`<strong>prod</strong> <a href="https://kafka-ui.internal/prod" rel="noopener">kafka-prod</a>`,
+		"<strong>staging</strong> kafka-staging")
+	if strings.Contains(body, "banner") {
+		t.Errorf("unexpected banner:\n%s", body)
+	}
+
+	// Inline schemas and receives.
+	_, body, _ = s.get(c, "/events/com.acme.orders.order.cancelled.v1")
+	contains(t, "inline schema", body, `<span class="s-name">reason</span>`, `&#34;payment_failed&#34;`)
+	_, body, _ = s.get(c, "/events/com.acme.orders.order.cancel.requested.v1")
+	contains(t, "receives", body, "Received by", "<code>orders.commands.cancel</code>")
+
+	// A type the portal only knows as consumed.
+	code, body, _ = s.get(c, "/events/com.acme.payments.payment.captured.v1")
+	if code != 200 {
+		t.Fatalf("consumed-only: %d", code)
+	}
+	contains(t, "consumed-only", body, "No producer published", `<a href="/apis/orders-events">orders-events</a>`,
+		`<a href="/apis/orders-http">orders-http</a>`)
+
+	if code, _, _ := s.get(c, "/events/com.acme.nope.v1"); code != 404 {
+		t.Errorf("unknown type: %d", code)
+	}
+
+	// Deprecated, consumed as part of the whole API, and declared twice.
+	st := s.push(
+		[3]string{"api/events.yaml", "version: 1.4.0", "version: 1.5.0"},
+		[3]string{"api/events.yaml", "    summary: An order was placed.", "    summary: An order was placed.\n    deprecated: true"},
+		[3]string{"portal.yaml", "consumes:\n", "consumes:\n  - api: orders-events\n"},
+		[3]string{"portal.yaml", "consumes:", `  - id: orders-events-copy
+    kind: cloudevents
+    spec: api/events.yaml
+    lifecycle: production
+
+consumes:`})
+	if st["orders-events"] != "published" || st["orders-events-copy"] != "published" {
+		t.Fatalf("statuses %v", st)
+	}
+	_, body, _ = s.get(c, "/events/com.acme.orders.order.created.v1")
+	contains(t, "changed event", body, "Deprecated.", "orders-events</a> 1.5.0",
+		// orders-http's push is unchanged, which doesn't update its consumes.
+		`<a href="/apis/orders-events-copy">orders-events-copy</a> <span class="muted">(everything from orders-events)</span>`,
+		"Declared by more than one API.", `<a href="/apis/orders-events-copy/versions/1.5.0">orders-events-copy</a> (produces)`)
+}

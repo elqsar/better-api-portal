@@ -182,6 +182,21 @@ body {
   .api-head h1 .badge { font-size: 0.5em; font-weight: 500; }
   main.wide { max-width: none; padding-left: 2rem; padding-right: 2rem; }
   .api-docs { min-height: 60vh; }
+
+  /* Event page */
+  .event-head h1 code { background: none; padding: 0; font-size: 0.8em; overflow-wrap: anywhere; }
+  pre.example { background: var(--code-bg); border-radius: var(--radius); padding: 0.75rem 1rem; overflow-x: auto; margin: 0 0 1rem; }
+  ul.schema { list-style: none; margin: 0; padding-left: 1.1rem; border-left: 1px solid var(--border); }
+  ul.schema.root { border-left: none; padding-left: 0; }
+  ul.schema li { margin: 0.15rem 0; }
+  .schema summary { cursor: pointer; }
+  .schema-leaf { padding-left: 1rem; } /* lines up with summaries' markers */
+  .s-name { font-family: var(--mono); font-size: 0.9em; font-weight: 600; }
+  .s-label { color: var(--muted); font-style: italic; }
+  .s-type { color: var(--accent); font-family: var(--mono); font-size: 0.85em; }
+  .s-req { color: var(--err); font-size: 0.8em; }
+  .s-fact, .s-note { color: var(--muted); font-size: 0.85em; }
+  .s-desc { color: var(--muted); font-size: 0.9em; margin-left: 1rem; }
 }
 
 }

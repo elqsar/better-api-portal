@@ -49,6 +49,8 @@ type Store interface {
 	Model(ctx context.Context, versionID int64) (*model.Spec, error)
 	Report(ctx context.Context, versionID int64) (*store.Report, error)
 	Dependencies(ctx context.Context, apiID string) (consumes, consumers []store.Dependency, err error)
+	MessageRoles(ctx context.Context, msgType string) ([]store.MessageRole, error)
+	TypeConsumers(ctx context.Context, msgType string, owners []string) ([]store.Dependency, error)
 	Bundle(ctx context.Context, contentHash string) ([]byte, error)
 }
 
@@ -76,7 +78,8 @@ type Server struct {
 	mu       sync.Mutex
 	provider *oidcProvider
 
-	docs docCache
+	docs  cache[[]byte]      // resolved OpenAPI documents
+	specs cache[*model.Spec] // bundles parsed with their schemas, for event pages
 }
 
 type staticFile struct {
@@ -191,6 +194,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /apis/{id}/versions/{version}/lint", s.authed(s.apiLint))
 	mux.Handle("GET /apis/{id}/versions/{version}/docs", s.authed(s.apiDocs))
 	mux.Handle("GET /apis/{id}/versions/{version}/openapi.json", s.authed(s.openAPIDocument))
+	mux.Handle("GET /events/{type}", s.authed(s.event))
 	mux.Handle("/", s.authed(func(w http.ResponseWriter, r *http.Request, u *User) {
 		s.error(w, r, u, http.StatusNotFound, "Not found", "There is no page at "+r.URL.Path+".")
 	}))

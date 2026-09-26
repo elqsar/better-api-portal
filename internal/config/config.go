@@ -21,6 +21,30 @@ type Config struct {
 	CI     CI     `yaml:"ci"`
 	OIDC   OIDC   `yaml:"oidc"`
 	Admins Admins `yaml:"admins"`
+	// Brokers are the message broker clusters that descriptors' async
+	// environments name.
+	Brokers []Broker `yaml:"brokers"`
+}
+
+// Broker is a message broker cluster, e.g. a Kafka cluster.
+type Broker struct {
+	Name     string `yaml:"name"`
+	Protocol string `yaml:"protocol"`
+	// UI is the broker's web console, which event pages link to.
+	UI string `yaml:"ui"`
+	// Settings are the protocol's own fields (bootstrap, url, account,
+	// region, …), kept as written until something uses them.
+	Settings map[string]any `yaml:",inline"`
+}
+
+// Broker returns the broker with the name, or nil.
+func (c *Config) Broker(name string) *Broker {
+	for i := range c.Brokers {
+		if c.Brokers[i].Name == name {
+			return &c.Brokers[i]
+		}
+	}
+	return nil
 }
 
 // OIDC configures how people sign in to the web UI.
@@ -117,7 +141,29 @@ func Load(path string) (*Config, error) {
 	if err := c.OIDC.normalise(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := checkBrokers(c.Brokers); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return &c, nil
+}
+
+func checkBrokers(bs []Broker) error {
+	seen := map[string]bool{}
+	for i, b := range bs {
+		if b.Name == "" {
+			return fmt.Errorf("brokers[%d]: name is required", i)
+		}
+		if seen[b.Name] {
+			return fmt.Errorf("brokers[%d]: %s is configured twice", i, b.Name)
+		}
+		seen[b.Name] = true
+		if b.UI != "" {
+			if u, err := url.Parse(b.UI); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+				return fmt.Errorf("brokers[%d]: ui %q is not a URL", i, b.UI)
+			}
+		}
+	}
+	return nil
 }
 
 func (o *OIDC) normalise() error {

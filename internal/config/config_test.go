@@ -19,7 +19,7 @@ func TestLoadExample(t *testing.T) {
 
 func TestLoadIgnoresUnknownSections(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "portal.config.yaml")
-	body := "org: {name: X, eventTypePrefix: com.x.}\nrulesets: {openapi: {default: x}}\nbrokers: [{name: k, protocol: kafka}]\n"
+	body := "org: {name: X, eventTypePrefix: com.x.}\nrulesets: {openapi: {default: x}}\n"
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +29,38 @@ func TestLoadIgnoresUnknownSections(t *testing.T) {
 	}
 	if c.Org.Name != "X" || c.Org.EventTypePrefix != "com.x." {
 		t.Fatalf("unexpected config: %+v", c)
+	}
+}
+
+func TestLoadBrokers(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body, err string
+	}{
+		"ok":        {body: "brokers: [{name: k, protocol: kafka, bootstrap: 'k:9093', ui: https://kafka-ui/prod}]"},
+		"no name":   {body: "brokers: [{protocol: kafka}]", err: "name is required"},
+		"duplicate": {body: "brokers: [{name: k}, {name: k}]", err: "k is configured twice"},
+		"bad ui":    {body: "brokers: [{name: k, ui: kafka-ui}]", err: "is not a URL"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "portal.config.yaml")
+			if err := os.WriteFile(p, []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c, err := Load(p)
+			if tc.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.err) {
+					t.Fatalf("err = %v, want %q", err, tc.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := c.Broker("k")
+			if b == nil || b.Protocol != "kafka" || b.UI != "https://kafka-ui/prod" || b.Settings["bootstrap"] != "k:9093" || c.Broker("x") != nil {
+				t.Errorf("broker = %+v", b)
+			}
+		})
 	}
 }
 

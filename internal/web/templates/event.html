@@ -1,0 +1,124 @@
+{{define "content"}}
+{{$d := .Data}}{{$m := $d.Message}}
+<header class="event-head">
+  <p class="crumbs"><a href="/apis">APIs</a> / events</p>
+  <h1><code>{{$d.Type}}</code></h1>
+  {{with $d.Owner}}
+  <p class="muted">
+    {{if eq .Role "produces"}}Produced{{else}}Received{{end}} by
+    <a href="/apis/{{.APIID}}/versions/{{.Semver}}">{{.APIID}}</a> {{.Semver}}, which owns the contract
+  </p>
+  {{end}}
+</header>
+
+{{if gt (len $d.Declared) 1}}
+<div class="banner err" role="status">
+  <strong>Declared by more than one API.</strong> An event type has one owner (<code>ce-type-unique</code>);
+  this page shows {{$d.Owner.APIID}}'s declaration. Also declared by:
+  {{range $i, $r := $d.Declared}}{{if $i}}{{if gt $i 1}}, {{end}}<a href="/apis/{{$r.APIID}}/versions/{{$r.Semver}}">{{$r.APIID}}</a> ({{$r.Role}}){{end}}{{end}}.
+</div>
+{{end}}
+{{if and $m $m.Deprecated}}
+<div class="banner warn" role="status">
+  <strong>Deprecated.</strong> Don't start consuming this event; ask the owner of {{$d.Owner.APIID}} what replaces it.
+</div>
+{{end}}
+{{if not $d.Owner}}
+<div class="banner warn" role="status">
+  <strong>No producer published.</strong> APIs in the portal consume this type, but no published API declares it,
+  so its schema isn't known here.
+</div>
+{{end}}
+
+<div class="columns">
+  <div class="main-col">
+    {{with $m}}
+    {{with .Summary}}<p><strong>{{.}}</strong></p>{{end}}
+    {{with .Description}}<p class="prose">{{.}}</p>{{end}}
+
+    <h2>Payload</h2>
+    {{with $d.Schema}}
+    <ul class="schema root"><li>{{template "schema-node" .}}</li></ul>
+    {{else}}
+    {{with $d.SchemaErr}}<p class="sev-text-error">The payload schema can't be shown: {{.}}</p>
+    {{else}}<p class="muted">No payload schema is declared.</p>{{end}}
+    {{end}}
+
+    {{with $d.Examples}}
+    <h2>Examples</h2>
+    {{range .}}
+    {{with .Name}}<h3>{{.}}</h3>{{end}}
+    <pre class="example">{{.JSON}}</pre>
+    {{end}}
+    {{end}}
+
+    {{with $d.Bindings}}
+    <h2>Carried on</h2>
+    <table>
+      <thead><tr><th>Protocol</th><th>Address</th><th>Settings</th><th>Brokers</th></tr></thead>
+      <tbody>
+      {{range .}}
+      <tr>
+        <td>{{.Protocol}}</td>
+        <td><code>{{.Address}}</code></td>
+        <td>{{range .Props}}<div><span class="muted">{{.Name}}:</span> <code>{{.Value}}</code></div>{{end}}</td>
+        <td>{{range .Brokers}}<div><strong>{{.Env}}</strong> {{if .UI}}<a href="{{.UI}}" rel="noopener">{{.Broker}}</a>{{else}}{{.Broker}}{{end}}</div>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{end}}
+    {{end}}
+
+    {{with $d.Consumers}}
+    <h2>Consumed by</h2>
+    <ul class="plain">{{range .}}<li><a href="/apis/{{.From}}">{{.From}}</a>{{if not .Types}} <span class="muted">(everything from {{.To}})</span>{{end}}</li>{{end}}</ul>
+    {{end}}
+  </div>
+
+  <aside class="side-col">
+    {{with $m}}
+    <h3>CloudEvents attributes</h3>
+    <dl class="facts">
+      <dt>type</dt><dd><code>{{$d.Type}}</code></dd>
+      {{with .CE.Source}}<dt>source</dt><dd><code>{{.}}</code></dd>{{end}}
+      {{with .CE.Subject}}<dt>subject</dt><dd><code>{{.}}</code></dd>{{end}}
+      <dt>datacontenttype</dt><dd><code>{{.CE.DataContentType}}</code></dd>
+      {{with .CE.DataSchemaURI}}<dt>dataschema</dt><dd><code>{{.}}</code></dd>{{end}}
+    </dl>
+    {{with .CE.Extensions}}
+    <h3>Extensions</h3>
+    <dl class="facts">
+      {{range $name, $x := .}}
+      <dt><code>{{$name}}</code></dt>
+      <dd>{{with $x.Type}}<span class="s-type">{{.}}</span>{{end}}{{if $x.Required}} <span class="s-req">required</span>{{end}}
+        {{with $x.Description}}<div class="muted">{{.}}</div>{{end}}</dd>
+      {{end}}
+    </dl>
+    {{end}}
+    {{end}}
+  </aside>
+</div>
+{{end}}
+
+{{define "schema-node"}}
+{{if .Children}}
+<details {{if .Open}}open{{end}}>
+  <summary>{{template "schema-head" .}}</summary>
+  <ul class="schema">{{range .Children}}<li>{{template "schema-node" .}}</li>{{end}}</ul>
+</details>
+{{else}}
+<div class="schema-leaf">{{template "schema-head" .}}</div>
+{{end}}
+{{end}}
+
+{{define "schema-head"}}
+{{- if .Name}}{{if .Label}}<span class="s-label">{{.Name}}</span>{{else}}<span class="s-name">{{.Name}}</span>{{end}}{{end}}
+{{with .Type}}<span class="s-type">{{.}}</span>{{end}}
+{{- if .Required}} <span class="s-req">required</span>{{end}}
+{{- with .Ref}} <span class="s-fact" title="$ref">→ {{.}}</span>{{end}}
+{{- range .Facts}} <span class="s-fact">· {{.}}</span>{{end}}
+{{- with .Enum}} <span class="s-fact">· one of {{range $i, $e := .}}{{if $i}}, {{end}}<code>{{$e}}</code>{{end}}</span>{{end}}
+{{- with .Note}} <span class="s-note">({{.}})</span>{{end}}
+{{- with .Description}}<div class="s-desc">{{.}}</div>{{end}}
+{{end}}
