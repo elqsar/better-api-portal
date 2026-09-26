@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `62b0a3c`
+Last updated: 2026-09-26 · Last commit: `06eb74f`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,9 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** has started: step 1, the index
-behind browsing and search, is done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is under way: step 1 (the index behind
+browsing and search) and step 2 (the web skeleton with OIDC sign-in) are
+done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -42,6 +43,7 @@ specs are available yet.
 | 15 | `fe8f1ec` | `portal push`, `check --baseline-from`, `internal/client`, example GitHub Actions workflow |
 | 16 | `109eb2d` | End-to-end test: the CLI against a real portal (publish, retry, reject, ack) |
 | 17 | `62b0a3c` | M3 index: `version_models`, message/operation/binding rows, `dependencies`, `search_docs`, `latest_version_id`; `portal reindex` |
+| 18 | `06eb74f` | Web UI skeleton: layout, embedded static files, OIDC sign-in with PKCE, Postgres sessions, `serve --dev-login` stub provider |
 
 ### J1/J2 against a portal
 ```sh
@@ -89,6 +91,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL) |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
+| `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; `web/devoidc` is the `--dev-login` stub provider |
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
@@ -96,7 +99,8 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
-`task psql`, `task run` (serve on :8080), `task test:integration`
+`task psql`, `task run` (serve on http://localhost:8080 with `--dev-login`: the
+stub sign-in page lets you pick a name and groups), `task test:integration`
 (store, httpapi and the CLI end to end, one cloned database per test); `task dev:db:down` wipes
 it.
 Golden files are regenerated with `go test ./<pkg> -update` (eventcatalog,
@@ -305,8 +309,36 @@ be changed in M3's first commit to match.
     next push; `reindex` doesn't rewrite `meta`.
   - The page URL is `/apis/{id}/versions/{v}`, as `push` already prints,
     not `/v/`.
+- **Web skeleton (step 2, done):**
+  - `serve` routes `/api/`, `/healthz`, `/readyz` to the REST API and the
+    rest to the UI. Without `oidc.issuer` the UI shows what to configure;
+    CI keeps working.
+  - Sign-in: code flow + PKCE + nonce; discovery is lazy and retried. One
+    `portal_login_<state prefix>` cookie per sign-in in progress (10 min),
+    because a browser's `/favicon.ico` request used to start a second
+    sign-in and overwrite the first (seen only in a real browser; now a
+    test). Only page loads (`Sec-Fetch-Dest: document`, or none) are sent
+    to sign in; subresources and htmx requests get 401.
+  - Sessions: 32 random bytes in `portal_session` (HttpOnly, SameSite=Lax,
+    Secure when publicURL is https), sha256 in `sessions`, 12 h absolute;
+    expired rows are deleted at each sign-in. Groups are stored at sign-in,
+    so role changes apply at the next sign-in.
+  - Non-GET requests with a foreign `Origin` (or `Sec-Fetch-Site:
+    cross-site`) get 403.
+  - CSP `default-src 'self'`, no inline script or style; htmx configured
+    by meta tag with `allowEval: false` and no indicator styles. No
+    `hx-boost`: a boosted fetch can't follow a redirect to the identity
+    provider.
+  - Static files: `/static/<name>?v=<hash>` cached for a year, otherwise
+    `no-cache` with an ETag.
+  - `--dev-login` stub: issuer `<publicURL>/dev/oidc`, client
+    `portal-dev`, offers every configured team group plus the admins
+    group; redirects only to the portal's own host and requires S256
+    PKCE. publicURL defaults to `http://localhost:<port>` with it.
+  - `/api/v1` reads don't accept the session cookie yet; that comes with
+    the docs step, which is the first to need it.
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
-  skeleton + login; (3) API list/page; (4) Scalar docs; (5) event page;
+  skeleton + login (done); (3) API list/page; (4) Scalar docs; (5) event page;
   (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
   tests with golden HTML.
 
@@ -353,10 +385,10 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Step 1
-(the index) is done. Next is step 2: `internal/web`, with the layout,
-embedded static files, routing, OIDC login with Postgres sessions, and the
-dev stub provider for `task run`.
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1
+(the index) and 2 (web skeleton, sign-in) are done. Next is step 3: the API
+list (`/apis`, filters by team, kind, lifecycle, tag) and the API page
+(`/apis/{id}/versions/{v}`: overview, versions, lint; deprecation banner).
 
 ## Known gaps
 
