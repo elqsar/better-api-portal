@@ -37,8 +37,9 @@ type Options struct {
 
 // Report is the outcome of a check.
 type Report struct {
-	Findings []model.Finding
-	APIs     []APIResult // the APIs whose spec was parsed, in descriptor order
+	Descriptor string // the descriptor's path, as given
+	Findings   []model.Finding
+	APIs       []APIResult // the APIs whose spec was parsed, in descriptor order
 }
 
 // APIResult summarises one API.
@@ -61,7 +62,7 @@ func Run(descPath string, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Report{Findings: findings}
+	r := &Report{Descriptor: descPath, Findings: findings}
 	if d == nil {
 		return r, nil
 	}

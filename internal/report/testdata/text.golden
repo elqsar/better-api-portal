@@ -1,0 +1,10 @@
+error [descriptor-owner] owner team-x is not <known> & "listed"
+svc/api/openapi.yaml:33: error [request-property-enum-value-removed BRK-OA-29783f] /paths/~1orders/post: breaking change needs version 3.0.0 or later: removed the enum value
+/elsewhere/base/api/openapi.yaml:12: info [api-path-removed-without-deprecation BRK-OA-b7eb78] /paths/~1old/get: api path removed (acknowledged: unused)
+svc/api/openapi.yaml:75: warn [sec-integer-bounds] /components/schemas/Money: integer has no minimum or maximum
+svc/api/events.yaml:32: warn [ce-description] /messages/1: no description
+orders-http 2.4.0 (baseline 2.3.0, 2 change(s)): score 84
+  breaking  BRK-OA-29783f request-property-enum-value-removed: removed the enum value
+  additive  endpoint-added: endpoint added
+orders-events 1.4.0: score 98
+2 error(s), 2 warning(s), 1 info

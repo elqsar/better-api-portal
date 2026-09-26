@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "portal",
+          "version": "v1.2.3",
+          "rules": [
+            {
+              "id": "api-path-removed-without-deprecation"
+            },
+            {
+              "id": "ce-description"
+            },
+            {
+              "id": "descriptor-owner"
+            },
+            {
+              "id": "request-property-enum-value-removed"
+            },
+            {
+              "id": "sec-integer-bounds"
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "descriptor-owner",
+          "ruleIndex": 2,
+          "level": "error",
+          "message": {
+            "text": "owner team-x is not \u003cknown\u003e \u0026 \"listed\""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "svc/portal.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "portal/v1": "c6b8f7b459607dd9"
+          },
+          "properties": {}
+        },
+        {
+          "ruleId": "request-property-enum-value-removed",
+          "ruleIndex": 3,
+          "level": "error",
+          "message": {
+            "text": "breaking change needs version 3.0.0 or later: removed the enum value"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "svc/api/openapi.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 33
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "portal/v1": "de40a41a3282b683"
+          },
+          "properties": {
+            "api": "orders-http",
+            "pointer": "/paths/~1orders/post",
+            "changeId": "BRK-OA-29783f"
+          }
+        },
+        {
+          "ruleId": "api-path-removed-without-deprecation",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "api path removed (acknowledged: unused) (at /elsewhere/base/api/openapi.yaml:12, outside the checkout)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "svc/portal.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "portal/v1": "3555adc4c4d9b23c"
+          },
+          "properties": {
+            "api": "orders-http",
+            "pointer": "/paths/~1old/get",
+            "changeId": "BRK-OA-b7eb78"
+          }
+        },
+        {
+          "ruleId": "sec-integer-bounds",
+          "ruleIndex": 4,
+          "level": "warning",
+          "message": {
+            "text": "integer has no minimum or maximum"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "svc/api/openapi.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 75
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "portal/v1": "348c27fcd7d0d67c"
+          },
+          "properties": {
+            "api": "orders-http",
+            "pointer": "/components/schemas/Money"
+          }
+        },
+        {
+          "ruleId": "ce-description",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "no description"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "svc/api/events.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 32
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "portal/v1": "4a4f77b17b1a9ec2"
+          },
+          "properties": {
+            "api": "orders-events",
+            "pointer": "/messages/1"
+          }
+        }
+      ]
+    }
+  ]
+}

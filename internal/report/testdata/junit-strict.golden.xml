@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="portal check" tests="7" failures="4">
+  <testsuite name="svc/portal.yaml" tests="1" failures="1">
+    <testcase name="descriptor-owner" classname="svc/portal.yaml">
+      <failure type="error" message="owner team-x is not &lt;known&gt; &amp; &#34;listed&#34;"><![CDATA[error [descriptor-owner] owner team-x is not <known> & "listed"]]></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="orders-http" tests="4" failures="2">
+    <testcase name="request-property-enum-value-removed BRK-OA-29783f svc/api/openapi.yaml:33" classname="orders-http">
+      <failure type="error" message="breaking change needs version 3.0.0 or later: removed the enum value"><![CDATA[svc/api/openapi.yaml:33: error [request-property-enum-value-removed BRK-OA-29783f] /paths/~1orders/post: breaking change needs version 3.0.0 or later: removed the enum value]]></failure>
+    </testcase>
+    <testcase name="api-path-removed-without-deprecation BRK-OA-b7eb78 /elsewhere/base/api/openapi.yaml:12" classname="orders-http">
+      <system-out><![CDATA[/elsewhere/base/api/openapi.yaml:12: info [api-path-removed-without-deprecation BRK-OA-b7eb78] /paths/~1old/get: api path removed (acknowledged: unused)]]></system-out>
+    </testcase>
+    <testcase name="sec-integer-bounds svc/api/openapi.yaml:75" classname="orders-http">
+      <failure type="warn" message="integer has no minimum or maximum"><![CDATA[svc/api/openapi.yaml:75: warn [sec-integer-bounds] /components/schemas/Money: integer has no minimum or maximum]]></failure>
+    </testcase>
+    <testcase name="version 2.4.0 score 84" classname="orders-http">
+      <system-out><![CDATA[baseline 2.3.0, 2 change(s)
+  breaking  BRK-OA-29783f request-property-enum-value-removed: removed the enum value
+  additive  endpoint-added: endpoint added
+]]></system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="orders-events" tests="2" failures="1">
+    <testcase name="ce-description svc/api/events.yaml:32" classname="orders-events">
+      <failure type="warn" message="no description"><![CDATA[svc/api/events.yaml:32: warn [ce-description] /messages/1: no description]]></failure>
+    </testcase>
+    <testcase name="version 1.4.0 score 98" classname="orders-events"></testcase>
+  </testsuite>
+</testsuites>

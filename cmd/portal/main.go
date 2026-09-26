@@ -62,11 +62,12 @@ func checkCmd() *cobra.Command {
 		acks       []string
 		ackReason  string
 		format     string
+		outputs    []string
 		strict     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "check",
-		Short: "Validate the descriptor and its specs locally; writes nothing",
+		Short: "Validate the descriptor and its specs locally; writes only the reports asked for",
 		Long: `Validate the descriptor and its specs, lint them, and, given --baseline,
 diff each API against the previous version and apply the versioning policy.
 
@@ -76,15 +77,47 @@ or, per API, a bundle written by portal bundle: --baseline orders-http=orders-ht
 It can be repeated: at most one portal.yaml, plus bundles, which take precedence.
 Event catalogues are diffed natively and OpenAPI with oasdiff. A breaking
 change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
---ack accepts.`,
+--ack accepts.
+
+--format picks what goes to stdout: text, json, sarif or junit. --output
+format=path writes the same result to a file as well, and can be repeated, so
+one run gives a readable log plus files for CI. In GitHub Actions:
+  portal check --baseline ../base/portal.yaml --output sarif=portal.sarif
+then upload portal.sarif with github/codeql-action/upload-sarif (if: always()).
+The files are written even when the check fails.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			render, ok := map[string]func(io.Writer, *check.Report) error{
-				"text": report.Text,
-				"json": report.JSON,
-			}[format]
+			root, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			renderers := map[string]func(io.Writer, *check.Report) error{
+				"text":  report.Text,
+				"json":  report.JSON,
+				"sarif": func(w io.Writer, r *check.Report) error { return report.SARIF(w, r, root) },
+				"junit": func(w io.Writer, r *check.Report) error { return report.JUnit(w, r, strict) },
+			}
+			render, ok := renderers[format]
 			if !ok {
-				return fmt.Errorf("unknown --format %q (want text or json)", format)
+				return fmt.Errorf("unknown --format %q (want text, json, sarif or junit)", format)
+			}
+			type output struct{ format, path string }
+			var files []output
+			seen := map[string]bool{}
+			for _, o := range outputs {
+				f, p, _ := strings.Cut(o, "=")
+				if _, ok := renderers[f]; !ok || p == "" {
+					return fmt.Errorf("--output %q: want format=path, with format text, json, sarif or junit", o)
+				}
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return err
+				}
+				if seen[abs] {
+					return fmt.Errorf("--output %q: %s is already an output", o, p)
+				}
+				seen[abs] = true
+				files = append(files, output{f, p})
 			}
 			opts := check.Options{Baselines: baselines}
 			if len(acks) > 0 {
@@ -110,6 +143,15 @@ change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
 			if err := render(cmd.OutOrStdout(), r); err != nil {
 				return err
 			}
+			for _, o := range files {
+				var buf bytes.Buffer
+				if err := renderers[o.format](&buf, r); err != nil {
+					return err
+				}
+				if err := os.WriteFile(o.path, buf.Bytes(), 0o644); err != nil {
+					return err
+				}
+			}
 			c := model.Counts(r.Findings)
 			if c[model.SeverityError] > 0 || (strict && c[model.SeverityWarn] > 0) {
 				return errFindings
@@ -122,7 +164,8 @@ change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
 	cmd.Flags().StringArrayVar(&baselines, "baseline", nil, "the previous version's portal.yaml, or api-id=bundle.tar.zst (repeatable)")
 	cmd.Flags().StringArrayVar(&acks, "ack", nil, "acknowledge a breaking change by id (repeatable)")
 	cmd.Flags().StringVar(&ackReason, "ack-reason", "", "why the acknowledged changes are safe (required with --ack)")
-	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
+	cmd.Flags().StringVar(&format, "format", "text", "stdout format: text, json, sarif or junit")
+	cmd.Flags().StringArrayVar(&outputs, "output", nil, "also write format=path, e.g. sarif=portal.sarif (repeatable)")
 	cmd.Flags().BoolVar(&strict, "strict", false, "fail on warnings too")
 	return cmd
 }

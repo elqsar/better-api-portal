@@ -37,6 +37,12 @@ func Text(w io.Writer, r *check.Report) error {
 }
 
 func finding(w io.Writer, f model.Finding) error {
+	_, err := fmt.Fprintln(w, findingLine(f))
+	return err
+}
+
+// findingLine is a finding as one line of text, without a newline.
+func findingLine(f model.Finding) string {
 	loc := f.File
 	if f.Line > 0 {
 		loc = fmt.Sprintf("%s:%d", loc, f.Line)
@@ -52,8 +58,7 @@ func finding(w io.Writer, f model.Finding) error {
 	if f.Pointer != "" {
 		ptr = f.Pointer + ": "
 	}
-	_, err := fmt.Fprintf(w, "%s%s [%s] %s%s\n", loc, f.Severity, rule, ptr, f.Message)
-	return err
+	return fmt.Sprintf("%s%s [%s] %s%s", loc, f.Severity, rule, ptr, f.Message)
 }
 
 // Changes writes one line per change: impact, id (for breaking changes),

@@ -21,7 +21,7 @@ One Go binary, `portal`, with subcommands. It needs one Postgres. No other runti
 | Command | Purpose |
 |---|---|
 | `portal serve` | Web UI, REST API and background worker. Runs migrations at start, behind a Postgres advisory lock. |
-| `portal check [--descriptor portal.yaml] [--baseline file] [--format text\|json\|sarif\|junit]` | Validate, lint, bundle and diff locally. Doesn't write anything. |
+| `portal check [--descriptor portal.yaml] [--baseline file] [--format text\|json\|sarif\|junit] [--output format=path]` | Validate, lint, bundle and diff locally. It writes only the report files asked for with `--output` (repeatable), so one run can give a CI log plus SARIF and JUnit files. |
 | `portal push` | `check`, then upload. Prints the version URL and report. |
 | `portal bundle --out dir` | Write each API's bundle to `<dir>/<api-id>.tar.zst` and print its content hash. It can be used as `check --baseline api-id=file`. |
 | `portal diff <old> <new>` | Diff any two spec files or portal refs (`orders-http@2.3.0`). |
