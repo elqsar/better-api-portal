@@ -2,6 +2,9 @@ version: '3'
 
 silent: true
 
+vars:
+  DEV_DSN: postgres://portal:portal@localhost:55432/portal?sslmode=disable
+
 tasks:
   default:
     desc: List available tasks
@@ -39,3 +42,32 @@ tasks:
           echo "== $f"
           bin/portal check --config docs/spec/examples/portal.config.yaml --descriptor "$f" || exit 1
         done
+
+  dev:db:
+    desc: Start the development Postgres with podman-compose
+    cmds:
+      - podman-compose up -d --wait db
+
+  dev:db:down:
+    desc: Stop the development Postgres and delete its data
+    cmds:
+      - podman-compose down -v
+
+  psql:
+    desc: Open psql on the development database
+    interactive: true
+    cmds:
+      - podman-compose exec db psql -U portal portal
+
+  migrate:
+    desc: Apply database migrations to the development database
+    deps: [build]
+    cmds:
+      - bin/portal migrate --dsn '{{.DEV_DSN}}'
+
+  test:integration:
+    desc: Run the tests that need Postgres (start it with task dev:db)
+    env:
+      PORTAL_TEST_DSN: '{{.DEV_DSN}}'
+    cmds:
+      - go test -tags integration -count=1 ./internal/store/... {{.CLI_ARGS}}

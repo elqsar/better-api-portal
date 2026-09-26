@@ -1,0 +1,15 @@
+# Development Postgres for `portal serve` and the integration tests:
+# task dev:db, then PORTAL_DSN / PORTAL_TEST_DSN from Taskfile.yml.
+services:
+  db:
+    image: docker.io/library/postgres:17
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal
+      POSTGRES_DB: portal
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "portal"]
+      interval: 2s
+      retries: 15

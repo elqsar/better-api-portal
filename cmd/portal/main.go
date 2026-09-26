@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/report"
+	"better-api-portal/internal/store"
 	"better-api-portal/internal/yamldoc"
 )
 
@@ -50,7 +52,7 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd(), bundleCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd())
 	return root
 }
 
@@ -314,5 +316,34 @@ check --baseline as api-id=file. Doesn't lint: run check for that.`,
 	}
 	cmd.Flags().StringVar(&descPath, "descriptor", "portal.yaml", "path to the descriptor")
 	cmd.Flags().StringVar(&out, "out", "", "directory to write the bundles to (created if missing)")
+	return cmd
+}
+
+func migrateCmd() *cobra.Command {
+	var dsn string
+	cmd := &cobra.Command{
+		Use:   "migrate",
+		Short: "Apply database migrations",
+		Long: `Apply pending migrations to the portal's Postgres database. portal serve
+does this at startup too; the command is for pipelines that prefer an
+explicit step. It holds an advisory lock, so concurrent runs are safe.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if dsn == "" {
+				dsn = os.Getenv("PORTAL_DSN")
+			}
+			if dsn == "" {
+				return errors.New("no database: pass --dsn or set PORTAL_DSN")
+			}
+			ctx := context.Background()
+			s, err := store.Open(ctx, dsn)
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			return s.Migrate(ctx)
+		},
+	}
+	cmd.Flags().StringVar(&dsn, "dsn", "", "Postgres connection string (default $PORTAL_DSN)")
 	return cmd
 }
