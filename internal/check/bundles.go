@@ -2,6 +2,7 @@ package check
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/descriptor"
+	"better-api-portal/internal/model"
+	"better-api-portal/internal/yamldoc"
 )
 
 // DescriptorName is the file name uploaded descriptors are checked under,
@@ -171,4 +174,40 @@ func relError(tmp, root string, err error) error {
 		return err
 	}
 	return fmt.Errorf("%s", msg)
+}
+
+// BundleAPIs packs the spec closure of every API whose spec is usable, as a
+// push sends them. Problems with a closure are findings (bundle-syntax,
+// bundle-ref) and leave that API out.
+func BundleAPIs(d *descriptor.Descriptor) (map[string]*bundle.Bundle, []model.Finding, error) {
+	bundles := map[string]*bundle.Bundle{}
+	var findings []model.Finding
+	for i, api := range d.APIs {
+		if !d.SpecOK(i) {
+			continue // already a finding
+		}
+		c, problems, err := bundle.Load(d.Dir, d.SpecPath(i))
+		var se *yamldoc.SyntaxError
+		if errors.As(err, &se) {
+			findings = append(findings, model.Finding{API: api.ID, RuleID: "bundle-syntax", Severity: model.SeverityError,
+				File: d.SpecPath(i), Line: se.Line, Message: "not valid YAML or JSON: " + se.Error()})
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, p := range problems {
+			findings = append(findings, model.Finding{API: api.ID, RuleID: "bundle-ref", Severity: model.SeverityError,
+				File: p.File, Pointer: p.Pointer, Line: p.Line, Message: p.Message})
+		}
+		if len(problems) > 0 {
+			continue
+		}
+		b, err := bundle.Read(c.Root, c.Files())
+		if err != nil {
+			return nil, nil, err
+		}
+		bundles[api.ID] = b
+	}
+	return bundles, findings, nil
 }

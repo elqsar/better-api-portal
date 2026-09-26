@@ -1,0 +1,50 @@
+# Example workflow for a service repo (J1, J2): check every pull request
+# against what the portal has published, and publish from main and tags.
+# Copy to .github/workflows/api-portal.yml and set PORTAL_URL.
+name: API portal
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["*"]
+
+permissions:
+  contents: read
+  id-token: write        # the portal authenticates the job by its OIDC ID token
+  security-events: write # for the SARIF upload
+
+env:
+  PORTAL_URL: https://api-portal.acme.internal
+
+jobs:
+  portal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the portal CLI
+        # Replace with however your organisation distributes the binary.
+        run: |
+          curl -fsSL "${{ vars.PORTAL_CLI_URL }}" -o "$RUNNER_TEMP/portal"
+          chmod +x "$RUNNER_TEMP/portal"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      # The portal's own verdict on the change, with the org's rules and its
+      # latest published versions as baselines; nothing is stored. A pull
+      # request's ref may check but not push. (Pull requests from forks get
+      # no ID token; `portal check` with a --baseline checkout works there.)
+      - name: Check
+        if: github.event_name == 'pull_request'
+        run: portal push --dry-run --output sarif=portal.sarif
+
+      - name: Publish
+        if: github.event_name == 'push'
+        run: portal push --output sarif=portal.sarif
+
+      - name: Annotate the pull request
+        if: always() && hashFiles('portal.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: portal.sarif
+          category: api-portal

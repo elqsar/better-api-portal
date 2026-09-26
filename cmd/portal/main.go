@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,7 +27,6 @@ import (
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/report"
 	"better-api-portal/internal/store"
-	"better-api-portal/internal/yamldoc"
 )
 
 // Exit codes: 1 means the check found problems, 2 that it couldn't run.
@@ -59,20 +57,20 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd(), pushCmd())
 	return root
 }
 
 func checkCmd() *cobra.Command {
 	var (
-		descPath   string
-		configPath string
-		baselines  []string
-		acks       []string
-		ackReason  string
-		format     string
-		outputs    []string
-		strict     bool
+		descPath     string
+		configPath   string
+		baselines    []string
+		acks         []string
+		ackReason    string
+		baselineFrom string
+		audience     string
+		reports      reportFlags
 	)
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -84,6 +82,9 @@ diff each API against the previous version and apply the versioning policy.
   git worktree add ../base main
 or, per API, a bundle written by portal bundle: --baseline orders-http=orders-http.tar.zst.
 It can be repeated: at most one portal.yaml, plus bundles, which take precedence.
+--baseline-from URL fetches each API's latest published version from the
+portal instead, as a push would diff against it; an API with none isn't
+diffed. It authenticates like portal push.
 Event catalogues are diffed natively and OpenAPI with oasdiff. A breaking
 change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
 --ack accepts.
@@ -96,47 +97,13 @@ then upload portal.sarif with github/codeql-action/upload-sarif (if: always()).
 The files are written even when the check fails.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			root, err := os.Getwd()
+			out, err := reports.prepare()
 			if err != nil {
 				return err
 			}
-			renderers := map[string]func(io.Writer, *check.Report) error{
-				"text":  report.Text,
-				"json":  report.JSON,
-				"sarif": func(w io.Writer, r *check.Report) error { return report.SARIF(w, r, root) },
-				"junit": func(w io.Writer, r *check.Report) error { return report.JUnit(w, r, strict) },
-			}
-			render, ok := renderers[format]
-			if !ok {
-				return fmt.Errorf("unknown --format %q (want text, json, sarif or junit)", format)
-			}
-			type output struct{ format, path string }
-			var files []output
-			seen := map[string]bool{}
-			for _, o := range outputs {
-				f, p, _ := strings.Cut(o, "=")
-				if _, ok := renderers[f]; !ok || p == "" {
-					return fmt.Errorf("--output %q: want format=path, with format text, json, sarif or junit", o)
-				}
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return err
-				}
-				if seen[abs] {
-					return fmt.Errorf("--output %q: %s is already an output", o, p)
-				}
-				seen[abs] = true
-				files = append(files, output{f, p})
-			}
 			opts := check.Options{Baselines: baselines}
-			if len(acks) > 0 {
-				if strings.TrimSpace(ackReason) == "" {
-					return errors.New("--ack needs --ack-reason: say why the breaking change is safe")
-				}
-				opts.Acks = map[string]string{}
-				for _, id := range acks {
-					opts.Acks[id] = ackReason
-				}
+			if opts.Acks, err = ackMap(acks, ackReason); err != nil {
+				return err
 			}
 			if configPath != "" {
 				cfg, err := config.Load(configPath)
@@ -145,24 +112,20 @@ The files are written even when the check fails.`,
 				}
 				opts.Config = cfg
 			}
+			if baselineFrom != "" {
+				if opts.BaselineBundles, err = fetchBaselines(cmd.Context(), cmd.ErrOrStderr(), descPath, baselineFrom, audience); err != nil {
+					return err
+				}
+			}
 			r, err := check.Run(descPath, opts)
 			if err != nil {
 				return err
 			}
-			if err := render(cmd.OutOrStdout(), r); err != nil {
+			if err := out.write(cmd.OutOrStdout(), r); err != nil {
 				return err
 			}
-			for _, o := range files {
-				var buf bytes.Buffer
-				if err := renderers[o.format](&buf, r); err != nil {
-					return err
-				}
-				if err := os.WriteFile(o.path, buf.Bytes(), 0o644); err != nil {
-					return err
-				}
-			}
 			c := model.Counts(r.Findings)
-			if c[model.SeverityError] > 0 || (strict && c[model.SeverityWarn] > 0) {
+			if c[model.SeverityError] > 0 || (reports.strict && c[model.SeverityWarn] > 0) {
 				return errFindings
 			}
 			return nil
@@ -173,9 +136,10 @@ The files are written even when the check fails.`,
 	cmd.Flags().StringArrayVar(&baselines, "baseline", nil, "the previous version's portal.yaml, or api-id=bundle.tar.zst (repeatable)")
 	cmd.Flags().StringArrayVar(&acks, "ack", nil, "acknowledge a breaking change by id (repeatable)")
 	cmd.Flags().StringVar(&ackReason, "ack-reason", "", "why the acknowledged changes are safe (required with --ack)")
-	cmd.Flags().StringVar(&format, "format", "text", "stdout format: text, json, sarif or junit")
-	cmd.Flags().StringArrayVar(&outputs, "output", nil, "also write format=path, e.g. sarif=portal.sarif (repeatable)")
-	cmd.Flags().BoolVar(&strict, "strict", false, "fail on warnings too")
+	cmd.Flags().StringVar(&baselineFrom, "baseline-from", "", "portal URL: diff each API against its latest published version there")
+	cmd.Flags().StringVar(&audience, "audience", config.DefaultAudience, "audience of the GitHub Actions ID token, with --baseline-from")
+	reports.flags(cmd)
+	cmd.Flags().BoolVar(&reports.strict, "strict", false, "fail on warnings too")
 	return cmd
 }
 
@@ -255,35 +219,13 @@ check --baseline as api-id=file. Doesn't lint: run check for that.`,
 			}
 			type packed struct{ id, hash, path string }
 			var done []packed
-			bundles := map[string]*bundle.Bundle{}
+			var bundles map[string]*bundle.Bundle
 			if d != nil {
-				for i, api := range d.APIs {
-					if !d.SpecOK(i) {
-						continue // already a finding
-					}
-					c, problems, err := bundle.Load(d.Dir, d.SpecPath(i))
-					var se *yamldoc.SyntaxError
-					if errors.As(err, &se) {
-						findings = append(findings, model.Finding{API: api.ID, RuleID: "bundle-syntax", Severity: model.SeverityError,
-							File: d.SpecPath(i), Line: se.Line, Message: "not valid YAML or JSON: " + se.Error()})
-						continue
-					}
-					if err != nil {
-						return err
-					}
-					for _, p := range problems {
-						findings = append(findings, model.Finding{API: api.ID, RuleID: "bundle-ref", Severity: model.SeverityError,
-							File: p.File, Pointer: p.Pointer, Line: p.Line, Message: p.Message})
-					}
-					if len(problems) > 0 {
-						continue
-					}
-					b, err := bundle.Read(c.Root, c.Files())
-					if err != nil {
-						return err
-					}
-					bundles[api.ID] = b
+				var fs []model.Finding
+				if bundles, fs, err = check.BundleAPIs(d); err != nil {
+					return err
 				}
+				findings = append(findings, fs...)
 			}
 			if model.Counts(findings)[model.SeverityError] > 0 {
 				if err := report.Text(cmd.OutOrStdout(), &check.Report{Findings: findings}); err != nil {
