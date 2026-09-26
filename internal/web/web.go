@@ -20,8 +20,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"better-api-portal/internal/config"
+	"better-api-portal/internal/model"
 	"better-api-portal/internal/store"
 )
 
@@ -37,6 +39,15 @@ type Store interface {
 	Session(ctx context.Context, idHash []byte) (*store.Session, error)
 	DeleteSession(ctx context.Context, idHash []byte) error
 	RecentlyPublished(ctx context.Context, limit int) ([]store.Published, int, error)
+
+	ListAPIs(ctx context.Context, f store.APIFilter) ([]store.APISummary, error)
+	Tags(ctx context.Context) ([]string, error)
+	APIDetail(ctx context.Context, id string) (*store.APIDetail, error)
+	PublishedVersion(ctx context.Context, apiID, semver string) (*store.Version, error)
+	Versions(ctx context.Context, apiID string) ([]store.VersionSummary, error)
+	Model(ctx context.Context, versionID int64) (*model.Spec, error)
+	Report(ctx context.Context, versionID int64) (*store.Report, error)
+	Dependencies(ctx context.Context, apiID string) (consumes, consumers []store.Dependency, err error)
 }
 
 // Options configure a Server.
@@ -102,6 +113,21 @@ func New(o Options) (*Server, error) {
 	}
 
 	funcs := template.FuncMap{
+		"date": func(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC") },
+		"day": func(t *time.Time) string {
+			if t == nil {
+				return ""
+			}
+			return t.Format("2006-01-02")
+		},
+		// short abbreviates a hash or commit.
+		"short": func(s string, n int) string {
+			s = strings.TrimPrefix(s, "sha256:")
+			if len(s) > n {
+				return s[:n]
+			}
+			return s
+		},
 		"static": func(name string) (string, error) {
 			f, ok := s.static[name]
 			if !ok {
@@ -110,7 +136,8 @@ func New(o Options) (*Server, error) {
 			return "/static/" + name + "?v=" + f.hash, nil
 		},
 	}
-	layout, err := template.New("layout").Funcs(funcs).ParseFS(templateFS, "templates/layout.html")
+	// Every page gets the layout and the partials, _*.html.
+	layout, err := template.New("layout").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/_*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +147,7 @@ func New(o Options) (*Server, error) {
 	}
 	for _, p := range pages {
 		name := strings.TrimSuffix(path.Base(p), ".html")
-		if name == "layout" {
+		if name == "layout" || strings.HasPrefix(name, "_") {
 			continue
 		}
 		t, err := template.Must(layout.Clone()).ParseFS(templateFS, p)
@@ -144,6 +171,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/callback", s.callback)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.Handle("GET /{$}", s.authed(s.home))
+	mux.Handle("GET /apis", s.authed(s.apiList))
+	mux.Handle("GET /apis/{id}", s.authed(s.apiLatest))
+	mux.Handle("GET /apis/{id}/versions", s.authed(s.apiVersions))
+	mux.Handle("GET /apis/{id}/versions/{version}", s.authed(s.apiOverview))
+	mux.Handle("GET /apis/{id}/versions/{version}/lint", s.authed(s.apiLint))
 	mux.Handle("/", s.authed(func(w http.ResponseWriter, r *http.Request, u *User) {
 		s.error(w, r, u, http.StatusNotFound, "Not found", "There is no page at "+r.URL.Path+".")
 	}))
@@ -214,16 +246,29 @@ type page struct {
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name string, p page) {
+	s.renderBlock(w, r, status, name, "layout", p)
+}
+
+// renderBlock renders one template of a page: "layout" for the whole page,
+// or a fragment for an htmx request.
+func (s *Server) renderBlock(w http.ResponseWriter, r *http.Request, status int, name, block string, p page) {
 	p.Org = s.Config.Org.Name
 	var buf bytes.Buffer
-	if err := s.pages[name].ExecuteTemplate(&buf, "layout", p); err != nil {
+	if err := s.pages[name].ExecuteTemplate(&buf, block, p); err != nil {
 		s.Log.Error("render", "page", name, "path", r.URL.Path, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Add("Vary", "HX-Request")
 	w.WriteHeader(status)
 	w.Write(buf.Bytes())
+}
+
+// htmx says whether the request is htmx's, which wants a fragment. A
+// history-restoring request wants the whole page.
+func htmx(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
 }
 
 type errorData struct {

@@ -1,0 +1,56 @@
+{{define "content"}}
+<h1>APIs</h1>
+<form class="filters" action="/apis" method="get"
+      hx-get="/apis" hx-target="#api-table" hx-swap="outerHTML" hx-push-url="true"
+      hx-trigger="change, input delay:300ms from:input[name=q]">
+  <input type="search" name="q" value="{{.Data.Filter.Q}}" placeholder="Filter by id or title" aria-label="Filter by id or title">
+  <select name="team" aria-label="Team">
+    <option value="">All teams</option>
+    {{range .Data.Teams}}<option value="{{.Value}}" {{if eq .Value $.Data.Filter.Team}}selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+  <select name="kind" aria-label="Kind">
+    <option value="">All kinds</option>
+    {{range .Data.Kinds}}<option {{if eq . $.Data.Filter.Kind}}selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  <select name="lifecycle" aria-label="Lifecycle">
+    <option value="">Any lifecycle</option>
+    {{range .Data.Lifecycles}}<option {{if eq . $.Data.Filter.Lifecycle}}selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  {{if .Data.Tags}}
+  <select name="tag" aria-label="Tag">
+    <option value="">Any tag</option>
+    {{range .Data.Tags}}<option {{if eq . $.Data.Filter.Tag}}selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  {{end}}
+  <noscript><button type="submit">Filter</button></noscript>
+</form>
+{{template "api-table" .}}
+{{end}}
+
+{{define "api-table"}}
+<div id="api-table">
+{{if .Data.APIs}}
+<table>
+  <thead><tr><th>API</th><th>Owner</th><th>Lifecycle</th><th>Latest</th><th class="num">Score</th></tr></thead>
+  <tbody>
+  {{range .Data.APIs}}
+  <tr>
+    <td>
+      <a href="/apis/{{.ID}}/versions/{{.Latest}}">{{.ID}}</a> {{template "kind" .Kind}}
+      {{if .Title}}<div class="muted">{{.Title}}</div>{{end}}
+      {{if .Tags}}<div class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
+    </td>
+    <td>{{or (index $.Data.TeamNames .Owner) .Owner}}</td>
+    <td>{{template "lifecycle" .Lifecycle}}{{with day .Sunset}}<div class="muted">sunset {{.}}</div>{{end}}</td>
+    <td>{{.Latest}}<div class="muted">{{date .LatestAt}}</div></td>
+    <td class="num">{{.Score}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+<p class="muted">{{len .Data.APIs}} API{{if ne (len .Data.APIs) 1}}s{{end}}</p>
+{{else}}
+<p class="muted">No published API matches.</p>
+{{end}}
+</div>
+{{end}}

@@ -23,6 +23,7 @@ import (
 
 // memStore keeps sessions in memory.
 type memStore struct {
+	Store    // the rest panics: those pages are tested against Postgres
 	mu       sync.Mutex
 	sessions map[string]store.Session
 	recent   []store.Published

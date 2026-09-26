@@ -15,6 +15,7 @@
   {{with .User}}
   <nav>
     <a href="/" {{if eq $.Nav "home"}}aria-current="page"{{end}}>Home</a>
+    <a href="/apis" {{if eq $.Nav "apis"}}aria-current="page"{{end}}>APIs</a>
   </nav>
   <div class="user">
     <span>{{.DisplayName}}</span>

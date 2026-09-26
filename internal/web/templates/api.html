@@ -1,0 +1,192 @@
+{{define "content"}}
+{{$a := .Data.API}}
+<header class="api-head">
+  <p class="crumbs"><a href="/apis">APIs</a> / {{$a.ID}}</p>
+  <h1>{{or $a.Title $a.ID}} {{template "kind" $a.Kind}} {{template "lifecycle" $a.Lifecycle}}</h1>
+  {{with .Data.Version}}
+  <p class="muted">
+    Version <strong>{{.Semver}}</strong>{{if $.Data.IsLatest}} (latest){{else}} · <a href="/apis/{{$a.ID}}/versions/{{$a.LatestSemver}}">latest is {{$a.LatestSemver}}</a>{{end}}
+    · owned by {{$.Data.OwnerName}}
+  </p>
+  {{end}}
+</header>
+{{if eq $a.Lifecycle "deprecated"}}
+<div class="banner warn" role="status">
+  <strong>Deprecated.</strong>
+  {{with day $a.Sunset}}It will be retired on {{.}}.{{else}}It will be retired; no date is set yet.{{end}}
+  Don't build new integrations on it; talk to {{.Data.OwnerName}} about what replaces it.
+</div>
+{{else if eq $a.Lifecycle "retired"}}
+<div class="banner err" role="status"><strong>Retired.</strong> This API is no longer served.</div>
+{{end}}
+{{template "api-body" .}}
+{{end}}
+
+{{define "api-body"}}
+{{$a := .Data.API}}{{$v := .Data.Version}}
+<div id="api-body">
+<nav class="tabs" aria-label="API sections"
+     hx-target="#api-body" hx-swap="outerHTML" hx-push-url="true">
+  {{with $v}}
+  <a href="/apis/{{$a.ID}}/versions/{{.Semver}}" hx-get="/apis/{{$a.ID}}/versions/{{.Semver}}" {{if eq $.Data.Tab "overview"}}aria-current="page"{{end}}>Overview</a>
+  <a href="/apis/{{$a.ID}}/versions/{{.Semver}}/lint" hx-get="/apis/{{$a.ID}}/versions/{{.Semver}}/lint" {{if eq $.Data.Tab "lint"}}aria-current="page"{{end}}>Lint &amp; changes</a>
+  {{end}}
+  <a href="/apis/{{$a.ID}}/versions" hx-get="/apis/{{$a.ID}}/versions" {{if eq .Data.Tab "versions"}}aria-current="page"{{end}}>Versions</a>
+</nav>
+<div class="tab-panel">
+{{if eq .Data.Tab "overview"}}{{template "tab-overview" .}}
+{{else if eq .Data.Tab "lint"}}{{template "tab-lint" .}}
+{{else}}{{template "tab-versions" .}}{{end}}
+</div>
+</div>
+{{end}}
+
+{{define "tab-overview"}}
+{{$a := .Data.API}}{{$v := .Data.Version}}{{$spec := .Data.Spec}}
+<div class="columns">
+  <div class="main-col">
+    {{with $spec}}{{with .Description}}<p class="prose">{{.}}</p>{{end}}{{end}}
+
+    {{if and $spec $spec.Operations}}
+    <h2>Operations</h2>
+    <table>
+      <tbody>
+      {{range $spec.Operations}}
+      <tr {{if .Deprecated}}class="deprecated"{{end}}>
+        <td class="nowrap">{{template "method" .Method}}</td>
+        <td><code>{{.Path}}</code>{{if .Deprecated}} <span class="badge lc-deprecated">deprecated</span>{{end}}</td>
+        <td>{{.Summary}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{end}}
+
+    {{if and $spec $spec.Messages}}
+    <h2>Events</h2>
+    <table>
+      <thead><tr><th>Type</th><th>Role</th><th>Carried on</th></tr></thead>
+      <tbody>
+      {{range $spec.Messages}}
+      <tr {{if .Deprecated}}class="deprecated"{{end}}>
+        <td><a href="/events/{{.Key}}"><code>{{.Key}}</code></a>{{if .Deprecated}} <span class="badge lc-deprecated">deprecated</span>{{end}}
+          {{with .Summary}}<div class="muted">{{.}}</div>{{end}}</td>
+        <td>{{.Role}}</td>
+        <td>{{range .Bindings}}<div>{{.Protocol}} <code>{{.Address}}</code></div>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{end}}
+
+    {{if or .Data.Consumes .Data.Consumers}}
+    <h2>Dependencies</h2>
+    {{with .Data.Consumes}}
+    <h3>Uses</h3>
+    <ul class="plain">{{range .}}<li><a href="/apis/{{.To}}">{{.To}}</a>{{with .Types}} <span class="muted">({{range $i, $t := .}}{{if $i}}, {{end}}<code>{{$t}}</code>{{end}})</span>{{end}}</li>{{end}}</ul>
+    {{end}}
+    {{with .Data.Consumers}}
+    <h3>Used by</h3>
+    <ul class="plain">{{range .}}<li><a href="/apis/{{.From}}">{{.From}}</a>{{with .Types}} <span class="muted">({{range $i, $t := .}}{{if $i}}, {{end}}<code>{{$t}}</code>{{end}})</span>{{end}}</li>{{end}}</ul>
+    {{end}}
+    {{end}}
+  </div>
+
+  <aside class="side-col">
+    <dl class="facts">
+      <dt>Owner</dt><dd>{{.Data.OwnerName}} <span class="muted">({{$a.Owner}})</span></dd>
+      <dt>Lifecycle</dt><dd>{{template "lifecycle" $a.Lifecycle}}{{with day $a.Sunset}} sunset {{.}}{{end}}</dd>
+      {{with $a.System}}<dt>System</dt><dd>{{.}}</dd>{{end}}
+      {{with $a.Compatibility}}<dt>Compatibility</dt><dd>{{.}}</dd>{{end}}
+      {{with .Data.Report}}<dt>Lint score</dt><dd><a href="/apis/{{$a.ID}}/versions/{{$v.Semver}}/lint">{{.Score}}</a></dd>{{end}}
+      <dt>Published</dt><dd>{{date $v.CreatedAt}}</dd>
+      <dt>Repo</dt><dd><code>{{$a.Repo}}</code></dd>
+      {{with $v.Source.Commit}}<dt>Commit</dt><dd>{{if $v.Source.CIRunURL}}<a href="{{$v.Source.CIRunURL}}"><code>{{short . 10}}</code></a>{{else}}<code>{{short . 10}}</code>{{end}}</dd>{{end}}
+      <dt>Content hash</dt><dd><code title="{{$v.ContentHash}}">{{short $v.ContentHash 12}}</code></dd>
+    </dl>
+    {{with $a.Environments}}
+    <h3>Environments</h3>
+    <ul class="plain">{{range .}}<li><strong>{{.Name}}</strong>{{with .URL}} <code>{{.}}</code>{{end}}{{with .Broker}} <span class="muted">on {{.}}</span>{{end}}</li>{{end}}</ul>
+    {{end}}
+    {{with $a.Links}}
+    <h3>Links</h3>
+    <ul class="plain">{{range .}}<li><a href="{{.URL}}" rel="noopener">{{or .Title .URL}}</a></li>{{end}}</ul>
+    {{end}}
+    {{with $a.Tags}}<div class="tags">{{range .}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
+  </aside>
+</div>
+{{end}}
+
+{{define "tab-lint"}}
+{{$r := .Data.Report}}
+<p>
+  Score <strong>{{$r.Score}}</strong> ·
+  {{.Data.Errors}} error(s), {{.Data.Warnings}} warning(s), {{.Data.Infos}} info
+</p>
+{{if $r.Findings}}
+<table>
+  <tbody>
+  {{range $r.Findings}}
+  <tr>
+    <td class="nowrap">{{template "severity" .Severity}}</td>
+    <td>
+      {{.Message}}
+      <div class="muted"><code>{{.RuleID}}</code>{{with .ID}} <code>{{.}}</code>{{end}}
+        {{with .File}}· {{.}}{{end}}{{if .Line}}:{{.Line}}{{end}}{{with .Pointer}} · <code>{{.}}</code>{{end}}</div>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="muted">No findings.</p>
+{{end}}
+
+<h2>Changes</h2>
+{{if $r.BaselineVersion}}
+<p>Compared with <a href="/apis/{{.Data.API.ID}}/versions/{{$r.BaselineVersion}}">{{$r.BaselineVersion}}</a>{{if not $r.Changes}}: no changes to the contract.{{else}}:{{end}}</p>
+{{with $r.Changes}}
+<table>
+  <tbody>
+  {{range .}}
+  <tr>
+    <td class="nowrap">{{template "impact" .Impact}}</td>
+    <td>{{.Message}}
+      <div class="muted"><code>{{.RuleID}}</code>{{with .ID}} <code>{{.}}</code>{{end}}{{with index $r.Acks .ID}} · acknowledged: “{{.}}”{{end}}</div></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
+{{else}}
+<p class="muted">This was the first version the portal checked, so there is nothing to compare it with.</p>
+{{end}}
+{{end}}
+
+{{define "tab-versions"}}
+{{$a := .Data.API}}
+{{if .Data.Versions}}
+<table>
+  <thead><tr><th>Version</th><th>Pushed</th><th class="num">Score</th><th>Findings</th><th>Changes</th><th>Commit</th></tr></thead>
+  <tbody>
+  {{range .Data.Versions}}
+  <tr {{if eq .Status "rejected"}}class="rejected"{{end}}>
+    <td>
+      {{if eq .Status "published"}}<a href="/apis/{{$a.ID}}/versions/{{.Semver}}">{{.Semver}}</a>{{if eq .Semver $a.LatestSemver}} <span class="badge">latest</span>{{end}}
+      {{else}}{{.Semver}} <span class="badge sev-error">rejected</span>{{end}}
+      {{if .Prerelease}}<span class="badge">pre-release</span>{{end}}
+    </td>
+    <td>{{date .CreatedAt}}</td>
+    <td class="num">{{.Score}}</td>
+    <td>{{if .Errors}}<span class="sev-text-error">{{.Errors}} error(s)</span> {{end}}{{if .Warnings}}{{.Warnings}} warning(s){{end}}{{if not (or .Errors .Warnings)}}<span class="muted">none</span>{{end}}</td>
+    <td>{{if .BaselineVersion}}from {{.BaselineVersion}}{{if .Breaking}}: {{.Breaking}} breaking{{if .Acks}}, {{.Acks}} acknowledged{{end}}{{end}}{{else}}<span class="muted">first</span>{{end}}</td>
+    <td>{{with .Source.Commit}}<code>{{short . 7}}</code>{{end}}{{with .Source.CIRunURL}} <a href="{{.}}">CI run</a>{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .Data.CanSeeRejected}}<p class="muted">Rejected pushes are shown to the owning team and admins; their findings are in the CI run.</p>{{end}}
+{{else}}
+<p class="muted">Nothing is published yet.</p>
+{{end}}
+{{end}}

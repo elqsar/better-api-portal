@@ -76,4 +76,4 @@ tasks:
     env:
       PORTAL_TEST_DSN: '{{.DEV_DSN}}'
     cmds:
-      - go test -tags integration -count=1 ./internal/store/... ./internal/httpapi/... ./cmd/portal/... {{.CLI_ARGS}}
+      - go test -tags integration -count=1 ./internal/store/... ./internal/httpapi/... ./internal/web/... ./cmd/portal/... {{.CLI_ARGS}}
