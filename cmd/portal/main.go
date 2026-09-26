@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"better-api-portal/internal/auth"
 	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/check"
 	"better-api-portal/internal/compat"
@@ -58,7 +59,7 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd())
 	return root
 }
 
@@ -334,7 +335,9 @@ func serveCmd() *cobra.Command {
 lock, so replicas can start together) and syncs the teams from the
 configuration. Logs are JSON on stderr.
 
-Pushes need CI authentication; until it is configured every push gets 401.`,
+CI jobs authenticate with an ID token from an issuer in ci.trustedIssuers
+(GitHub Actions, GitLab), or with a static token from portal admin token
+create.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dsn, err := dsnOrEnv(dsn)
@@ -367,7 +370,7 @@ Pushes need CI authentication; until it is configured every push gets 401.`,
 				return fmt.Errorf("sync teams: %w", err)
 			}
 
-			api := &httpapi.Server{Store: s, Config: cfg, Auth: httpapi.NoAuth{}, Log: log}
+			api := &httpapi.Server{Store: s, Config: cfg, Auth: auth.NewCI(cfg.CI.TrustedIssuers, s, nil), Log: log}
 			addr := cfg.Server.Listen
 			if addr == "" {
 				addr = ":8080"

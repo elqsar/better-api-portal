@@ -131,9 +131,11 @@ Search is tuned to show only **latest** versions by default. Older versions are 
 - **GitHub Actions:** the job requests an ID token with `audience: api-portal`. The portal verifies it against the `token.actions.githubusercontent.com` JWKS and maps the `repository` claim to a repo. Pushes are allowed only from configured refs (default: the default branch and tags).
 - **GitLab CI:** `id_tokens:` with `aud: api-portal`, verified against the GitLab instance's JWKS, using the `project_path` and `ref` claims.
 - There are no long-lived secrets in CI. Trusted issuers and claim mappings are configured by an admin.
+- The repo's CI subject is `repoPrefix` + the repo claim. With more than one issuer, each needs its own prefix (e.g. `gitlab:`), so one CI system can't push to another's repos.
+- A ref outside `allowedRefs` (e.g. a pull request's) still authenticates: it can call `/check` and download baselines, but a push gets 403. GitLab's short refs are qualified with `ref_type` first (`main` → `refs/heads/main`), so patterns read the same for both.
 
 ### CI: fallback static tokens
-These are for CI systems without OIDC. An admin issues a token per repo (`portal admin token create --repo …`). Only its hash is stored, it expires by default after 90 days, and its use is audited.
+These are for CI systems without OIDC. An admin issues a token per repo (`portal admin token create --repo …`; also `list` and `revoke`). Tokens start with `ptk_` so secret scanners can match them. Only the sha256 is stored, it expires by default after 90 days, and its use is audited: pushes record `token:<id>` as the actor, and the token's last use is kept.
 
 `portal check` needs only **read** access: any valid CI token or user token, or none with `--baseline`.
 
@@ -154,6 +156,7 @@ oidc:
 ci:
   trustedIssuers:
     - { issuer: https://token.actions.githubusercontent.com, audience: api-portal, repoClaim: repository, allowedRefs: ["refs/heads/main", "refs/tags/*"] }
+    - { issuer: https://gitlab.acme.internal, repoClaim: project_path, repoPrefix: "gitlab:" }
 brokers:
   - { name: kafka-prod, protocol: kafka, bootstrap: kafka.prod.internal:9093, ui: https://kafka-ui.internal/prod }
   - { name: nats-prod,  protocol: nats,  url: nats://nats.prod.internal:4222 }

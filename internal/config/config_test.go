@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,41 @@ func TestLoadMalformed(t *testing.T) {
 	}
 	if _, err := Load(p); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+func TestLoadCI(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body, err string
+	}{
+		"defaults":    {body: "ci: {trustedIssuers: [{issuer: https://token.actions.githubusercontent.com}]}"},
+		"not a URL":   {body: "ci: {trustedIssuers: [{issuer: token.actions}]}", err: "is not a URL"},
+		"bad pattern": {body: "ci: {trustedIssuers: [{issuer: https://a, allowedRefs: ['refs/[']}]}", err: "allowedRefs"},
+		"shared prefix": {
+			body: "ci: {trustedIssuers: [{issuer: https://a}, {issuer: https://b}]}",
+			err:  `share the repoPrefix ""`,
+		},
+		"distinct prefixes": {body: "ci: {trustedIssuers: [{issuer: https://a}, {issuer: https://b, repoPrefix: 'gitlab:'}]}"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "portal.config.yaml")
+			if err := os.WriteFile(p, []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c, err := Load(p)
+			if tc.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.err) {
+					t.Fatalf("err = %v, want %q", err, tc.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			ti := c.CI.TrustedIssuers[0]
+			if ti.Audience != DefaultAudience || ti.RepoClaim != DefaultRepoClaim || len(ti.AllowedRefs) != 2 {
+				t.Errorf("defaults not applied: %+v", ti)
+			}
+		})
 	}
 }

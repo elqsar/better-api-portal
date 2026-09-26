@@ -38,7 +38,11 @@ func (headerAuth) Authenticate(r *http.Request) (*httpapi.Identity, error) {
 	if repo == "" {
 		return nil, httpapi.ErrUnauthenticated
 	}
-	return &httpapi.Identity{Repo: repo, Actor: "repo:" + repo, Ref: "refs/heads/main"}, nil
+	ref := r.Header.Get("X-Test-Ref")
+	if ref == "" {
+		ref = "refs/heads/main"
+	}
+	return &httpapi.Identity{Repo: repo, Actor: "repo:" + repo, Ref: ref, CanPush: ref == "refs/heads/main"}, nil
 }
 
 func newServer(t *testing.T) *httptest.Server {
@@ -122,7 +126,9 @@ func post(t *testing.T, srv *httptest.Server, path, repo string, b io.Reader, ct
 	req, _ := http.NewRequest("POST", srv.URL+path, b)
 	req.Header.Set("Content-Type", ct)
 	if repo != "" {
+		repo, ref, _ := strings.Cut(repo, "@")
 		req.Header.Set("X-Test-Repo", repo)
+		req.Header.Set("X-Test-Ref", ref)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -291,7 +297,8 @@ func TestPushRejectedFirstPushClaimsNothing(t *testing.T) {
 
 func TestCheckStoresNothing(t *testing.T) {
 	srv := newServer(t)
-	r := push(t, srv, "/api/v1/check", "acme/orders", checkout(t), nil)
+	// A pull request's ref can't push, but it can check.
+	r := push(t, srv, "/api/v1/check", "acme/orders@refs/pull/7/merge", checkout(t), nil)
 	expect(t, r, "orders-http accepted", "orders-events accepted")
 	if resp, _ := getBundle(t, srv, "/api/v1/apis/orders-http/versions/latest/bundle"); resp.StatusCode != 404 {
 		t.Errorf("check stored something: %d", resp.StatusCode)
@@ -323,6 +330,7 @@ func TestPushBadRequests(t *testing.T) {
 		code int
 	}{
 		"unauthenticated": {"", func() (io.Reader, string) { return body(t, head, nil) }, 401},
+		"pull request":    {"acme/orders@refs/pull/7/merge", func() (io.Reader, string) { return body(t, head, nil) }, 403},
 		"missing bundle":  {"acme/orders", func() (io.Reader, string) { return body(t, head, nil, "orders-events") }, 400},
 		"not multipart":   {"acme/orders", func() (io.Reader, string) { return strings.NewReader("{}"), "application/json" }, 400},
 		"empty ack reason": {"acme/orders", func() (io.Reader, string) {

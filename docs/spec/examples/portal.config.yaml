@@ -7,6 +7,13 @@ teams:
   - { slug: team-orders, name: Orders, oidcGroup: eng-orders }
   - { slug: team-payments, name: Payments, oidcGroup: eng-payments }
 admins: { oidcGroup: eng-platform }
+ci:
+  trustedIssuers:
+    # audience, repoClaim and allowedRefs are the defaults, spelled out.
+    - issuer: https://token.actions.githubusercontent.com
+      audience: api-portal
+      repoClaim: repository
+      allowedRefs: ["refs/heads/main", "refs/tags/*"]
 brokers:
   - { name: kafka-staging, protocol: kafka, bootstrap: kafka.staging.internal:9093 }
   - { name: kafka-prod, protocol: kafka, bootstrap: kafka.prod.internal:9093 }

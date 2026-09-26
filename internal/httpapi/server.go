@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -24,6 +23,9 @@ type Identity struct {
 	Actor string
 	// Ref, Commit and RunURL describe the CI run, when known.
 	Ref, Commit, RunURL string
+	// CanPush is false for a caller that may only read and check, such as
+	// a CI job on a pull request's ref.
+	CanPush bool
 }
 
 // ErrUnauthenticated is what an Authenticator returns, possibly wrapped, when
@@ -33,14 +35,6 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 // Authenticator identifies the caller of a request.
 type Authenticator interface {
 	Authenticate(r *http.Request) (*Identity, error)
-}
-
-// NoAuth refuses every request. It is what serve runs with until an
-// authentication method is configured.
-type NoAuth struct{}
-
-func (NoAuth) Authenticate(*http.Request) (*Identity, error) {
-	return nil, fmt.Errorf("%w: no CI authentication is configured on this portal", ErrUnauthenticated)
 }
 
 // Server serves the REST API.

@@ -157,3 +157,37 @@ func TestSyncTeams(t *testing.T) {
 		t.Fatalf("teams = %+v, %v", teams, err)
 	}
 }
+
+func TestTokens(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	live, err := s.CreateToken(ctx, "acme/orders", []byte("h-live"), time.Now().Add(time.Hour), "cli:admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateToken(ctx, "acme/orders", []byte("h-old"), time.Now().Add(-time.Hour), "cli:admin"); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := s.TokenByHash(ctx, []byte("h-live"))
+	if err != nil || tok == nil || tok.ID != live || tok.Repo != "acme/orders" || tok.LastUsedAt == nil {
+		t.Fatalf("live token = %+v, %v", tok, err)
+	}
+	for _, h := range []string{"h-old", "h-unknown"} {
+		if tok, err := s.TokenByHash(ctx, []byte(h)); tok != nil || err != nil {
+			t.Errorf("%s = %+v, %v", h, tok, err)
+		}
+	}
+	if err := s.RevokeToken(ctx, live, "cli:admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeToken(ctx, live, "cli:admin"); !errors.Is(err, store.ErrNoToken) {
+		t.Errorf("second revoke: %v", err)
+	}
+	if tok, _ := s.TokenByHash(ctx, []byte("h-live")); tok != nil {
+		t.Error("revoked token still works")
+	}
+	all, err := s.Tokens(ctx)
+	if err != nil || len(all) != 2 || all[1].RevokedAt == nil || all[1].CreatedBy != "cli:admin" {
+		t.Fatalf("tokens = %+v, %v", all, err)
+	}
+}

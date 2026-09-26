@@ -70,6 +70,10 @@ type pushRequest struct {
 // pipeline and stores nothing.
 func (s *Server) push(dryRun bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if who := identity(r); !dryRun && !who.CanPush {
+			writeError(w, http.StatusForbidden, fmt.Sprintf("%s may not push from ref %q; it can still check", who.Repo, who.Ref))
+			return
+		}
 		req, err := readPush(w, r)
 		if err != nil {
 			var tooBig *http.MaxBytesError
