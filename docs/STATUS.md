@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `1b600e3`
+Last updated: 2026-09-26 · Last commit: `4c5d84b`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -10,7 +10,8 @@ and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
 We're partway through milestone **M1: `portal check` (offline)**. Event
 catalogues and OpenAPI both get the full pipeline: parse, lint, diff against
 `--baseline`, then the semver gate. Specs are bundled with a content hash.
-SARIF/JUnit output is still missing.
+Reports come as text, JSON, SARIF and JUnit. What's left of M1 is tuning
+against real specs.
 
 | # | Commit | What |
 |---|---|---|
@@ -24,6 +25,7 @@ SARIF/JUnit output is still missing.
 | 7 | `efe5c77` | vacuum decision: keep it, drop `oas3-missing-example` and `component-description` |
 | 8 | `c882e39` | OpenAPI diff with oasdiff: `--baseline`, `portal diff`, `BRK-OA-` ids |
 | 9 | `1b600e3` | Bundles: content hash, deterministic tar.zst, `portal bundle`, `--baseline id=bundle` |
+| 10 | `4c5d84b` | SARIF 2.1.0 and JUnit reports: `--format sarif\|junit`, repeatable `--output format=path` |
 
 ### J2, today (events and OpenAPI)
 ```sh
@@ -34,6 +36,9 @@ portal check --config portal.config.yaml --baseline ../base/portal.yaml
 portal check ... --ack BRK-CE-811dea --ack-reason "why it is safe"
 portal bundle --out base/                       # base/<api-id>.tar.zst + content hashes
 portal check --baseline orders-http=base/orders-http.tar.zst   # per-API bundle baseline
+# CI: text to the log, plus files for annotations, from one run
+portal check --baseline ../base/portal.yaml --output sarif=portal.sarif --output junit=portal.xml
+# then github/codeql-action/upload-sarif with `if: always()`
 portal diff old/events.yaml new/events.yaml     # exit 1 if any change is breaking
 portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 ```
@@ -54,7 +59,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/compat` | `Check(old, new, mode)`, which reduces to the subset test `sub(A,B)`; `Fingerprint` |
 | `internal/diff` | `Events` contract diff, `OpenAPI` (oasdiff adapter) |
 | `internal/policy` | Semver gate, lifecycle, pre-releases, acks |
-| `internal/report` | Text and JSON output |
+| `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | Minimal `portal.config.yaml` (org prefix, teams) |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
@@ -110,12 +115,30 @@ openapi, compat).
   orders-http now scores 94, up from 70. The spec's "96/100" was vacuum's own
   score.
 
+## Decisions (reports)
+
+- **JUnit failures match the exit code.** Errors are failures, and warnings
+  are too only with `--strict`. Other findings are passing test cases, with
+  their line in `<system-out>`. Each API also gets a passing
+  `version … score …` case listing its changes.
+- **SARIF locations:**
+  - Paths are relative to the working directory (`%SRCROOT%`), so run
+    `check` from the repository root.
+  - A file outside it, such as a baseline's, is replaced by the descriptor
+    (line 1), with "(at file:line, outside the checkout)" in the message.
+  - If the descriptor is outside it too, locations are absolute `file://`
+    URIs.
+  - `partialFingerprints["portal/v1"]` ignores line numbers.
+  - The output validates against the official 2.1.0 schema; checked by hand,
+    not in the tests, which would need the network.
+- `--output` values are validated before the run, and the files are written
+  even when the check fails.
+
 ## Next steps
 
-1. **SARIF / JUnit output** (J2 acceptance: PR annotations).
-2. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
+1. Run `portal check` over real company specs (Q7: `oneOf` usage, Q6: type
    prefix) and tune the rulesets.
-3. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
+2. Then **M2**: Postgres store, `POST /api/v1/push`, CI OIDC, claims, audit.
 
 ## Known gaps
 
