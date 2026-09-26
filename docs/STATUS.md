@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-26 · Last commit: `bb9627a`
+Last updated: 2026-09-26 · Last commit: `b703255`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -13,7 +13,9 @@ the compat table) is met. Event catalogues and OpenAPI both get the full
 pipeline: parse, lint, diff against `--baseline`, then the semver gate. Specs
 are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 
-Next is **M2: registry + push**, starting with the Postgres store. Tuning
+**M2: registry + push** is in progress: the store, the in-memory check and
+the push API and CI authentication (steps 1–4) are done. Then comes
+**M3: read UI**, whose design is agreed (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -30,6 +32,10 @@ specs are available yet.
 | 8 | `c882e39` | OpenAPI diff with oasdiff: `--baseline`, `portal diff`, `BRK-OA-` ids |
 | 9 | `1b600e3` | Bundles: content hash, deterministic tar.zst, `portal bundle`, `--baseline id=bundle` |
 | 10 | `4c5d84b` | SARIF 2.1.0 and JUnit reports: `--format sarif\|junit`, repeatable `--output format=path` |
+| 11 | `9d224aa` | Postgres store (pgx, embedded goose migrations), `portal migrate` |
+| 12 | `515dd72` | `check.RunBundles`: check an uploaded descriptor + bundles in memory |
+| 13 | `e7073ff` | `portal serve`: push, check (dry run), bundle download |
+| 14 | `b703255` | CI auth: GitHub/GitLab OIDC ID tokens, static tokens, `portal admin token` |
 
 ### J2, today (events and OpenAPI)
 ```sh
@@ -66,6 +72,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL) |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
+| `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
 | `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push in one transaction |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
@@ -178,6 +185,71 @@ openapi, compat).
   `X-Portal-Content-Hash` and `X-Portal-Lifecycle`, so a check can use it as
   a baseline. It needs the same authentication as push, for now.
 
+## Decisions (CI auth)
+
+- **One `Authorization: Bearer` header** for both kinds: a `ptk_` prefix
+  means a static token, anything else is verified as an ID token. The issuer
+  is read from the unverified `iss` to pick the verifier; only exact
+  matches of configured issuers are trusted.
+- **Repo = `repoPrefix` + repo claim.** Several issuers must have distinct
+  prefixes (config load fails otherwise), so a GitLab project can't push to
+  the GitHub repo with the same path. Static tokens use the same CI subject,
+  so a repo can switch methods and keep its APIs.
+- **Refs gate pushing, not authentication.** A ref outside `allowedRefs`
+  (default `refs/heads/main`, `refs/tags/*`, `path.Match` patterns, so `*`
+  doesn't cross `/`) still checks and downloads baselines; a push gets 403.
+  `Identity.CanPush` carries this. GitLab refs are qualified with
+  `ref_type`.
+- **Audit:** the actor is the token's `sub` (e.g.
+  `repo:acme/orders:ref:refs/heads/main`) or `token:<id>`. The run URL is
+  derived for github.com (`run_id`) and GitLab (`pipeline_id`). Static-token
+  callers may send `X-Portal-Ref`, `-Commit`, `-Run-URL`, recorded
+  unchecked.
+- **An unreachable issuer** is a 500, not a 401, and isn't cached, so it's
+  retried on the next request.
+- **Static tokens:** 32 random bytes, sha256 stored, default 90 days,
+  `created_by` and `last_used_at` (migration 00002). `portal admin token
+  create|list|revoke`, audited as `token.create`/`token.revoke` with actor
+  `cli:<os user>`. `httpapi.NoAuth` is gone; `serve` always runs `auth.CI`.
+- go-oidc, go-jose and oauth2 are 3 new modules; the binary grows about
+  1.5 MB (94.2 → 95.7 MB).
+
+## Decisions (M3 UI)
+
+Agreed 2026-09-26; 05-architecture's Storage table and Web UI section are to
+be changed in M3's first commit to match.
+
+- **Stack as in D10:** `html/template` + htmx, `embed.FS`, one hand-written
+  CSS file (dark mode via `prefers-color-scheme`), no Node. Every page works
+  without JS; htmx only swaps tabs, filters and search results. Strict CSP
+  (`script-src 'self'`, no `hx-on`).
+- **Model storage:** `version_models.model jsonb` (the serialised
+  `model.Spec`, already JSON-tagged) for rendering, plus thin relational rows
+  only for queries across APIs: `messages(type, role, api_id, version_id)`,
+  `operations`, `bindings(protocol, address, …)`, `dependencies`, and
+  `search_docs` (tsvector + `pg_trgm`). No `schemas`/`schema_fields` tables.
+  Written in `store.Record`'s transaction; `portal reindex` rebuilds all of
+  it from the bundles.
+- **Scalar** gets one server-bundled document,
+  `/apis/{id}/v/{v}/openapi.json` (external `$ref`s resolved with
+  kin-openapi), cached by content hash. Scalar's standalone JS is embedded
+  and pinned.
+- **Raw diff is server-side** (pure-Go Myers diff, e.g. `hexops/gotextdiff`),
+  rendered as an HTML table: per-file YAML by default, canonical JSON as a
+  "semantic" toggle, unchanged regions folded and expanded with htmx.
+  Cacheable forever, since both sides are content hashes. Replaces the
+  spec's "small embedded JS diff library".
+- **Pages:** `/`, `/search`, `/apis`, `/apis/{id}/v/{semver}` (tabs:
+  overview, docs, versions, lint, dependencies; deprecation banner),
+  `/events/{ce-type}` (across APIs), `/apis/{id}/diff?from=&to=`,
+  `/teams/{slug}`. `/admin` after M3.
+- **Auth:** OIDC code flow + PKCE, sessions in Postgres, roles from group
+  mapping; `/api/v1` reads also accept the session cookie.
+- **Commit order:** (1) migration + indexing + `reindex`; (2) `internal/web`
+  skeleton + login; (3) API list/page; (4) Scalar docs; (5) event page;
+  (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
+  tests with golden HTML.
+
 ## Decisions (store)
 
 - **Tables in M2** are only what push and the gate need: teams, repos, apis,
@@ -224,14 +296,16 @@ Q1 default):
 1. ~~`internal/store`~~ done: pgx + goose, `portal migrate`, `task dev:db`.
 2. ~~`internal/check` over in-memory bundles~~ done: `RunBundles`,
    `Options.BaselineBundles`.
-3. ~~`portal serve` + push, check, bundle download~~ done; auth is
-   `httpapi.NoAuth` (every push gets 401) until step 4.
-4. `internal/auth`: GitHub Actions OIDC (`ci.trustedIssuers`, `allowedRefs`),
-   claims, fallback static tokens (`portal admin token create`).
+3. ~~`portal serve` + push, check, bundle download~~ done.
+4. ~~`internal/auth`~~ done:
+   OIDC ID tokens (GitHub, GitLab), `allowedRefs`, static tokens,
+   `portal admin token create|list|revoke`.
 5. `portal push` (ID token or `PORTAL_TOKEN`), `check --baseline-from URL`, a
    GitHub Actions example workflow.
 6. End-to-end test: publish, then reject a breaking change, then a no-op
    retry.
+
+Then **M3**, in the order under "Decisions (M3 UI)".
 
 ## Known gaps
 
