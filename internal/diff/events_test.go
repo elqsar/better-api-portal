@@ -204,39 +204,3 @@ func TestChangeIDsAreStable(t *testing.T) {
 		t.Errorf("ids = %v", first)
 	}
 }
-
-func TestSameContent(t *testing.T) {
-	root := t.TempDir()
-	write := func(dir, name, content string) {
-		p := filepath.Join(root, dir, name)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("a", "events.yaml", "x")
-	write("a", "s.json", "{}")
-	write("b", "events.yaml", "x")
-	write("b", "s.json", "{}")
-	files := []string{"events.yaml", "s.json"}
-	same := func(aFiles, bFiles []string) bool {
-		t.Helper()
-		ok, err := SameContent(filepath.Join(root, "a"), aFiles, filepath.Join(root, "b"), bFiles)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return ok
-	}
-	if !same(files, []string{"s.json", "events.yaml"}) {
-		t.Error("identical files in another order should be the same content")
-	}
-	if same(files, files[:1]) {
-		t.Error("different file sets should differ")
-	}
-	write("b", "s.json", "{ }")
-	if same(files, files) {
-		t.Error("different bytes should differ")
-	}
-}

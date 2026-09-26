@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/config"
+	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/model"
 )
 
@@ -40,7 +42,12 @@ func TestRunExample(t *testing.T) {
 	if !reflect.DeepEqual(counts, want) {
 		t.Errorf("findings = %v, want %v", counts, want)
 	}
-	wantAPIs := []APIResult{{ID: "orders-http", Score: 94, Version: "2.3.0"}, {ID: "orders-events", Score: 98, Version: "1.4.0"}}
+	// The hashes are pinned: a change to the canonical form would make the
+	// server see every existing version as changed.
+	wantAPIs := []APIResult{
+		{ID: "orders-http", Score: 94, Version: "2.3.0", ContentHash: "sha256:9a0ece62bdea04cc8070282535111ec69d89c8e297355cdc8dd506911fc39bc3"},
+		{ID: "orders-events", Score: 98, Version: "1.4.0", ContentHash: "sha256:7bb0bceacabdd16ba201c1a0cad55c6b08fc409eb099233d5dcc0be731d57a21"},
+	}
 	if !reflect.DeepEqual(r.APIs, wantAPIs) {
 		t.Errorf("apis = %+v, want %+v", r.APIs, wantAPIs)
 	}
@@ -135,7 +142,7 @@ func TestRunBaseline(t *testing.T) {
 
 	t.Run("breaking change on a minor bump", func(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{schema: dropCustomerID, events: {"version: 1.4.0", "version: 1.5.0"}})
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,7 +157,7 @@ func TestRunBaseline(t *testing.T) {
 
 		// Acknowledging it by id clears the error.
 		id := strings.TrimPrefix(errs[0], "compat-required ")
-		r, err = Run(head, Options{Baseline: base, Acks: map[string]string{id: "customerId is always set"}})
+		r, err = Run(head, Options{Baselines: []string{base}, Acks: map[string]string{id: "customerId is always set"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -161,7 +168,7 @@ func TestRunBaseline(t *testing.T) {
 
 	t.Run("breaking change on a major bump", func(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{schema: dropCustomerID, events: {"version: 1.4.0", "version: 2.0.0"}})
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +179,7 @@ func TestRunBaseline(t *testing.T) {
 
 	t.Run("content changed without a version bump", func(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{schema: dropCustomerID})
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +190,7 @@ func TestRunBaseline(t *testing.T) {
 
 	t.Run("unchanged", func(t *testing.T) {
 		base, head := baselinePair(t, nil)
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,7 +204,7 @@ func TestRunBaseline(t *testing.T) {
 
 	t.Run("API not in the baseline is a first version", func(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{"portal.yaml": {"id: orders-events", "id: orders-events-v2"}})
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -211,7 +218,7 @@ func TestRunBaseline(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(filepath.Dir(base), events), []byte("eventcatalog: \"1.0\"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Run(head, Options{Baseline: base}); err == nil || !strings.Contains(err.Error(), "baseline") {
+		if _, err := Run(head, Options{Baselines: []string{base}}); err == nil || !strings.Contains(err.Error(), "baseline") {
 			t.Errorf("err = %v", err)
 		}
 	})
@@ -226,7 +233,7 @@ func TestRunBaselineOpenAPI(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{spec: dropOutOfStock})
 		// Two edits to one file: apply the bump on top.
 		bump(t, head, spec, "version: 2.3.0", "version: 2.4.0")
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,7 +247,7 @@ func TestRunBaselineOpenAPI(t *testing.T) {
 		}
 
 		id := strings.TrimPrefix(errs[0], "request-property-enum-value-removed ")
-		r, err = Run(head, Options{Baseline: base, Acks: map[string]string{id: "nobody sends out_of_stock"}})
+		r, err = Run(head, Options{Baselines: []string{base}, Acks: map[string]string{id: "nobody sends out_of_stock"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -252,7 +259,7 @@ func TestRunBaselineOpenAPI(t *testing.T) {
 	t.Run("breaking change on a major bump", func(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{spec: dropOutOfStock})
 		bump(t, head, spec, "version: 2.3.0", "version: 3.0.0")
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,7 +270,7 @@ func TestRunBaselineOpenAPI(t *testing.T) {
 
 	t.Run("content changed without a version bump", func(t *testing.T) {
 		base, head := baselinePair(t, map[string][2]string{spec: {"summary: Get an order", "summary: Fetch an order"}})
-		r, err := Run(head, Options{Baseline: base})
+		r, err := Run(head, Options{Baselines: []string{base}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -301,6 +308,116 @@ func httpAPI(t *testing.T, r *Report) APIResult {
 	return APIResult{}
 }
 
+// packBase bundles the API id of the descriptor at base into dir and
+// returns the "id=file" baseline argument.
+func packBase(t *testing.T, base, id string) string {
+	t.Helper()
+	d, _, err := descriptor.Load(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range d.APIs {
+		if a.ID != id {
+			continue
+		}
+		c, problems, err := bundle.Load(d.Dir, d.SpecPath(i))
+		if err != nil || len(problems) > 0 {
+			t.Fatalf("closure: %v %+v", err, problems)
+		}
+		b, err := bundle.Read(c.Root, c.Files())
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(t.TempDir(), id+".tar.zst")
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := b.Pack(f); err != nil {
+			t.Fatal(err)
+		}
+		return id + "=" + p
+	}
+	t.Fatalf("no API %s in %s", id, base)
+	return ""
+}
+
+func TestRunBundleBaselines(t *testing.T) {
+	t.Run("events", func(t *testing.T) {
+		base, head := baselinePair(t, map[string][2]string{
+			"api/schemas/order-created.v1.json": dropCustomerID, "api/events.yaml": {"version: 1.4.0", "version: 1.5.0"}})
+		r, err := Run(head, Options{Baselines: []string{packBase(t, base, "orders-events")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs := errorsOf(r); len(errs) != 1 || !strings.HasPrefix(errs[0], "compat-required BRK-CE-") {
+			t.Errorf("errors = %v", errs)
+		}
+		if a := httpAPI(t, r); a.BaselineVersion != "" {
+			t.Errorf("orders-http has no baseline, yet = %+v", a)
+		}
+	})
+
+	t.Run("openapi, with the descriptor for the rest", func(t *testing.T) {
+		base, head := baselinePair(t, map[string][2]string{"api/openapi.yaml": dropOutOfStock})
+		bump(t, head, "api/openapi.yaml", "version: 2.3.0", "version: 2.4.0")
+		r, err := Run(head, Options{Baselines: []string{base, packBase(t, base, "orders-http")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs := errorsOf(r); len(errs) != 1 || !strings.HasPrefix(errs[0], "request-property-enum-value-removed BRK-OA-") {
+			t.Errorf("errors = %v", errs)
+		}
+		if a := eventsAPI(t, r); a.BaselineVersion != "1.4.0" {
+			t.Errorf("orders-events wasn't compared with the descriptor baseline: %+v", a)
+		}
+	})
+
+	t.Run("unchanged", func(t *testing.T) {
+		base, head := baselinePair(t, nil)
+		r, err := Run(head, Options{Baselines: []string{packBase(t, base, "orders-http"), packBase(t, base, "orders-events")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs := errorsOf(r); len(errs) > 0 {
+			t.Errorf("errors = %v", errs)
+		}
+	})
+
+	for name, args := range map[string]func(base string) []string{
+		"unknown id": func(base string) []string {
+			return []string{"nope=" + strings.TrimPrefix(packBase(t, base, "orders-http"), "orders-http=")}
+		},
+		"duplicate id":        func(base string) []string { a := packBase(t, base, "orders-http"); return []string{a, a} },
+		"two descriptors":     func(base string) []string { return []string{base, base} },
+		"not a bundle":        func(base string) []string { return []string{"orders-http=" + base} },
+		"missing bundle file": func(base string) []string { return []string{"orders-http=" + base + ".tar.zst"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			base, head := baselinePair(t, nil)
+			if _, err := Run(head, Options{Baselines: args(base)}); err == nil || !strings.Contains(err.Error(), "baseline") {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+}
+
+func TestRunFormattingOnlyChange(t *testing.T) {
+	// Same content hash: not a change that needs a version bump.
+	base, head := baselinePair(t, map[string][2]string{"api/openapi.yaml": {"openapi: 3.1.0", "# reformatted\nopenapi:    3.1.0"}})
+	r, err := Run(head, Options{Baselines: []string{base}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := errorsOf(r); len(errs) > 0 {
+		t.Errorf("errors = %v", errs)
+	}
+	if a := httpAPI(t, r); a.ContentHash == "" {
+		t.Errorf("no content hash: %+v", a)
+	}
+}
+
 func TestRunKindChanged(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
@@ -319,7 +436,7 @@ func TestRunKindChanged(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r, err := Run(filepath.Join(dir, "head/portal.yaml"), Options{Baseline: filepath.Join(dir, "base/portal.yaml")})
+	r, err := Run(filepath.Join(dir, "head/portal.yaml"), Options{Baselines: []string{filepath.Join(dir, "base/portal.yaml")}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,19 +2,24 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/check"
 	"better-api-portal/internal/compat"
 	"better-api-portal/internal/config"
+	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/report"
+	"better-api-portal/internal/yamldoc"
 )
 
 // Exit codes: 1 means the check found problems, 2 that it couldn't run.
@@ -45,7 +50,7 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd())
 	return root
 }
 
@@ -53,7 +58,7 @@ func checkCmd() *cobra.Command {
 	var (
 		descPath   string
 		configPath string
-		baseline   string
+		baselines  []string
 		acks       []string
 		ackReason  string
 		format     string
@@ -67,6 +72,8 @@ diff each API against the previous version and apply the versioning policy.
 
 --baseline takes the previous version's portal.yaml, for example from
   git worktree add ../base main
+or, per API, a bundle written by portal bundle: --baseline orders-http=orders-http.tar.zst.
+It can be repeated: at most one portal.yaml, plus bundles, which take precedence.
 Event catalogues are diffed natively and OpenAPI with oasdiff. A breaking
 change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
 --ack accepts.`,
@@ -79,7 +86,7 @@ change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
 			if !ok {
 				return fmt.Errorf("unknown --format %q (want text or json)", format)
 			}
-			opts := check.Options{Baseline: baseline}
+			opts := check.Options{Baselines: baselines}
 			if len(acks) > 0 {
 				if strings.TrimSpace(ackReason) == "" {
 					return errors.New("--ack needs --ack-reason: say why the breaking change is safe")
@@ -112,7 +119,7 @@ change without a major bump fails with an id (BRK-CE-… or BRK-OA-…) that
 	}
 	cmd.Flags().StringVar(&descPath, "descriptor", "portal.yaml", "path to the descriptor")
 	cmd.Flags().StringVar(&configPath, "config", "", "portal.config.yaml, for org rules such as the event type prefix")
-	cmd.Flags().StringVar(&baseline, "baseline", "", "the previous version's portal.yaml, to diff against")
+	cmd.Flags().StringArrayVar(&baselines, "baseline", nil, "the previous version's portal.yaml, or api-id=bundle.tar.zst (repeatable)")
 	cmd.Flags().StringArrayVar(&acks, "ack", nil, "acknowledge a breaking change by id (repeatable)")
 	cmd.Flags().StringVar(&ackReason, "ack-reason", "", "why the acknowledged changes are safe (required with --ack)")
 	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
@@ -174,5 +181,95 @@ event catalogues only.`,
 	}
 	cmd.Flags().StringVar(&mode, "compatibility", "", "payload compatibility mode for every message (default: by role)")
 	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
+	return cmd
+}
+
+func bundleCmd() *cobra.Command {
+	var descPath, out string
+	cmd := &cobra.Command{
+		Use:   "bundle",
+		Short: "Pack each API's spec and its $ref'd files into <out>/<api-id>.tar.zst",
+		Long: `Pack each API's spec, plus every file it reaches through $ref, into
+<out>/<api-id>.tar.zst, and print its content hash. Bundles can be given to
+check --baseline as api-id=file. Doesn't lint: run check for that.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if out == "" {
+				return errors.New("--out is required")
+			}
+			d, findings, err := descriptor.Load(descPath)
+			if err != nil {
+				return err
+			}
+			type packed struct{ id, hash, path string }
+			var done []packed
+			bundles := map[string]*bundle.Bundle{}
+			if d != nil {
+				for i, api := range d.APIs {
+					if !d.SpecOK(i) {
+						continue // already a finding
+					}
+					c, problems, err := bundle.Load(d.Dir, d.SpecPath(i))
+					var se *yamldoc.SyntaxError
+					if errors.As(err, &se) {
+						findings = append(findings, model.Finding{API: api.ID, RuleID: "bundle-syntax", Severity: model.SeverityError,
+							File: d.SpecPath(i), Line: se.Line, Message: "not valid YAML or JSON: " + se.Error()})
+						continue
+					}
+					if err != nil {
+						return err
+					}
+					for _, p := range problems {
+						findings = append(findings, model.Finding{API: api.ID, RuleID: "bundle-ref", Severity: model.SeverityError,
+							File: p.File, Pointer: p.Pointer, Line: p.Line, Message: p.Message})
+					}
+					if len(problems) > 0 {
+						continue
+					}
+					b, err := bundle.Read(c.Root, c.Files())
+					if err != nil {
+						return err
+					}
+					bundles[api.ID] = b
+				}
+			}
+			if model.Counts(findings)[model.SeverityError] > 0 {
+				if err := report.Text(cmd.OutOrStdout(), &check.Report{Findings: findings}); err != nil {
+					return err
+				}
+				return errFindings
+			}
+			if err := os.MkdirAll(out, 0o755); err != nil {
+				return err
+			}
+			for _, api := range d.APIs {
+				b := bundles[api.ID]
+				if b == nil {
+					continue
+				}
+				hash, err := b.Hash()
+				if err != nil {
+					return err
+				}
+				var buf bytes.Buffer
+				if err := b.Pack(&buf); err != nil {
+					return err
+				}
+				p := filepath.Join(out, api.ID+".tar.zst")
+				if err := os.WriteFile(p, buf.Bytes(), 0o644); err != nil {
+					return err
+				}
+				done = append(done, packed{api.ID, hash, p})
+			}
+			for _, p := range done {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s  %s  %s\n", p.id, p.hash, p.path); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&descPath, "descriptor", "portal.yaml", "path to the descriptor")
+	cmd.Flags().StringVar(&out, "out", "", "directory to write the bundles to (created if missing)")
 	return cmd
 }

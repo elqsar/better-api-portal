@@ -3,16 +3,12 @@
 package diff
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"maps"
-	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 
 	"better-api-portal/internal/compat"
@@ -328,32 +324,4 @@ func orNone(s string) string {
 		return "none"
 	}
 	return s
-}
-
-// SameContent reports whether two specs consist of the same files with the
-// same bytes. It stands in for the bundle content hash.
-func SameContent(oldRoot string, oldFiles []string, newRoot string, newFiles []string) (bool, error) {
-	if !slices.Equal(sorted(oldFiles), sorted(newFiles)) {
-		return false, nil
-	}
-	for _, f := range oldFiles {
-		a, err := os.ReadFile(filepath.Join(oldRoot, filepath.FromSlash(f)))
-		if err != nil {
-			return false, err
-		}
-		b, err := os.ReadFile(filepath.Join(newRoot, filepath.FromSlash(f)))
-		if err != nil {
-			return false, err
-		}
-		if !bytes.Equal(a, b) {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-func sorted(ss []string) []string {
-	out := slices.Clone(ss)
-	sort.Strings(out)
-	return out
 }

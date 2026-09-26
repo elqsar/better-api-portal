@@ -64,3 +64,25 @@ func TestDiffOpenAPI(t *testing.T) {
 		t.Errorf("breaking: out = %q, err = %v", out, err)
 	}
 }
+
+func TestBundleThenCheck(t *testing.T) {
+	out := t.TempDir()
+	stdout, err := run("bundle", "--descriptor", example+"/portal.yaml", "--out", out)
+	if err != nil {
+		t.Fatalf("bundle: %v\n%s", err, stdout)
+	}
+	for _, id := range []string{"orders-http", "orders-events"} {
+		if !strings.Contains(stdout, id+"  sha256:") {
+			t.Errorf("no hash printed for %s:\n%s", id, stdout)
+		}
+	}
+	stdout, err = run("check", "--descriptor", example+"/portal.yaml",
+		"--baseline", "orders-http="+filepath.Join(out, "orders-http.tar.zst"),
+		"--baseline", "orders-events="+filepath.Join(out, "orders-events.tar.zst"))
+	if err != nil || !strings.Contains(stdout, "orders-http 2.3.0 (baseline 2.3.0, 0 change(s))") {
+		t.Errorf("check: err = %v\n%s", err, stdout)
+	}
+	if _, err := run("bundle", "--descriptor", example+"/portal.yaml"); err == nil || !strings.Contains(err.Error(), "--out") {
+		t.Errorf("no --out: err = %v", err)
+	}
+}

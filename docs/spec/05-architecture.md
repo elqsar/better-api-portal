@@ -23,6 +23,7 @@ One Go binary, `portal`, with subcommands. It needs one Postgres. No other runti
 | `portal serve` | Web UI, REST API and background worker. Runs migrations at start, behind a Postgres advisory lock. |
 | `portal check [--descriptor portal.yaml] [--baseline file] [--format text\|json\|sarif\|junit]` | Validate, lint, bundle and diff locally. Doesn't write anything. |
 | `portal push` | `check`, then upload. Prints the version URL and report. |
+| `portal bundle --out dir` | Write each API's bundle to `<dir>/<api-id>.tar.zst` and print its content hash. It can be used as `check --baseline api-id=file`. |
 | `portal diff <old> <new>` | Diff any two spec files or portal refs (`orders-http@2.3.0`). |
 | `portal migrate` | Run DB migrations explicitly, for pipelines that prefer that. |
 | `portal admin …` | Transfer an API claim, delete a version, issue a fallback push token. |
@@ -70,6 +71,27 @@ The pipeline packages (`descriptor` through `policy`) must not import `store`, `
 APIs in one push are processed independently: one can be rejected while another publishes. The CLI exits non-zero if any API was rejected.
 
 Target: < 5 s server time for a 5 000-line spec at MVP scale.
+
+### Bundle format
+- **Content hash:** `sha256:` followed by the hex of sha256 over the entry
+  path, then, for each file in path order, its path and its canonical JSON.
+  Each part ends in a NUL byte. Canonical JSON is the parsed YAML or JSON,
+  re-encoded with sorted keys and no HTML escaping. Comments, formatting and
+  key order don't change the hash; values and file paths do. Paths are slash
+  paths relative to the descriptor's directory.
+- **tar.zst:** `.portal/manifest.json` comes first:
+  `{format: 1, entry, content_hash, files: [{path, size, sha256}]}`, where
+  each `sha256` is of the file's raw bytes. The spec files follow in path
+  order. They're stored as the original bytes, with mode 0644, mtime 0 and
+  uid/gid 0, so packing the same input always gives the same bytes. The
+  manifest describes content only, not API metadata, which keeps
+  deduplication by hash sound.
+- **Unpacking rejects:**
+  - absolute paths, `..`, backslashes, `.portal/` spec paths and duplicates;
+  - non-regular entries, and files missing from the manifest or not listed
+    in it;
+  - a per-file sha256 or content hash that doesn't match;
+  - more than 10 MB per file or 50 MB in total.
 
 ## Storage (Postgres ≥ 15)
 

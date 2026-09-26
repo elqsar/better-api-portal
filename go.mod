@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	github.com/daveshanley/vacuum v0.30.6
 	github.com/getkin/kin-openapi v0.149.0
+	github.com/klauspost/compress v1.20.1
 	github.com/oasdiff/oasdiff v1.32.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
