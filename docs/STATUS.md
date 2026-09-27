@@ -56,7 +56,7 @@ specs are available yet.
 | 28 | `88cd609` | Consumers grouped by service (repo) on the event page and the dependencies tab |
 | 29 | `90ac5ba` | Compatible payload changes name their fields (`compat.FieldChanges`) |
 | 30 | `a439b02` | API list and page titles fall back to the latest spec's title |
-| 31 | | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
+| 31 | `ac98731` | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
 
 ### J1/J2 against a portal
 ```sh
