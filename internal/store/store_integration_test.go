@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
-	"better-api-portal/internal/store/storetest"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store/storetest"
 )
 
 func TestMain(m *testing.M) { os.Exit(storetest.Main(m)) }

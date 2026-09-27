@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // schemaNode is one line of a payload schema rendered as a tree: a

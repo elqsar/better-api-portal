@@ -18,12 +18,12 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/httpapi"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store/storetest"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store/storetest"
 )
 
 func TestMain(m *testing.M) { os.Exit(storetest.Main(m)) }

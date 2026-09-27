@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
 )
 
 // fakePortal answers pushes with resp and serves the example's orders-http

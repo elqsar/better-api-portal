@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"sync"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
 )
 
 // documentVersion is part of the document's ETag: bump it when

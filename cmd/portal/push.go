@@ -13,13 +13,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/client"
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/httpapi"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/report"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/client"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/report"
 )
 
 // reportFlags are --format and --output, shared by check and push.

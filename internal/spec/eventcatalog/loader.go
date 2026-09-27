@@ -10,8 +10,8 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // loader serves schema documents to the compiler from inside the root only,

@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"better-api-portal/internal/auth"
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/httpapi"
-	"better-api-portal/internal/store"
-	"better-api-portal/internal/store/storetest"
+	"github.com/elqsar/better-api-portal/internal/auth"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store/storetest"
 )
 
 func TestMain(m *testing.M) { os.Exit(storetest.Main(m)) }

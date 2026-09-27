@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // pushedAPI is an API of this push that the portal-wide rules look at.

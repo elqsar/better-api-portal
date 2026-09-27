@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
 )
 
 var acme = Config{EventTypePrefix: "com.acme."}

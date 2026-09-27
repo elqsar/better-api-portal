@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/spec/eventcatalog"
-	"better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
 )
 
 const example = "../../docs/spec/examples/orders-service"

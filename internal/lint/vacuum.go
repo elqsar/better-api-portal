@@ -9,8 +9,8 @@ import (
 	"github.com/daveshanley/vacuum/motor"
 	"github.com/daveshanley/vacuum/rulesets"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // disabledVacuumRules are left out of vacuum's recommended ruleset. They made

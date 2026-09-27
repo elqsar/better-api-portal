@@ -21,8 +21,8 @@ import (
 	"github.com/pressly/goose/v3/lock"
 	"golang.org/x/mod/semver"
 
-	"better-api-portal/internal/index"
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/index"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 //go:embed migrations/*.sql

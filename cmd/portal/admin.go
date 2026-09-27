@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"better-api-portal/internal/auth"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/auth"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 func adminCmd() *cobra.Command {

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // CloudEvents runs the portal-native cloudevents-default ruleset. It works on

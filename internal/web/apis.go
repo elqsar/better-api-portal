@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"slices"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // Lifecycles in the order the UI lists them (docs/spec/03-formats.md).

@@ -1,4 +1,4 @@
-module better-api-portal
+module github.com/elqsar/better-api-portal
 
 go 1.26.3
 

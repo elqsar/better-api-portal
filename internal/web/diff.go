@@ -11,13 +11,13 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
-	"better-api-portal/internal/textdiff"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/textdiff"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // diffContext is how many unchanged lines show around a change.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 func TestLoadExample(t *testing.T) {

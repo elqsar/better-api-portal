@@ -11,13 +11,13 @@ import (
 	"slices"
 	"strings"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/eventcatalog"
-	"better-api-portal/internal/spec/openapi"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // DescriptorName is the file name uploaded descriptors are checked under,

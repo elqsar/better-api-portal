@@ -11,16 +11,16 @@ import (
 	"slices"
 	"strings"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/diff"
-	"better-api-portal/internal/lint"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/policy"
-	"better-api-portal/internal/spec/eventcatalog"
-	"better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/diff"
+	"github.com/elqsar/better-api-portal/internal/lint"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/policy"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
 )
 
 // Options configure a check.

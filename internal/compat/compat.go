@@ -15,7 +15,7 @@ import (
 	"sort"
 	"strings"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // Mode is a compatibility guarantee, in Kafka Schema Registry's vocabulary.

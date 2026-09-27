@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/bundle"
 )
 
 func TestDocumentInternalizesFileRefs(t *testing.T) {

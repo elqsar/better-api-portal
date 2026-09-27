@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // Headers on a bundle download, so a check can use it as its baseline.

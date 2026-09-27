@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
 )
 
 // cleanOAS passes every native rule.

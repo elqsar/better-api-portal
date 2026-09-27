@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // Text writes one line per finding, `file:line: severity [rule id] pointer: message`,

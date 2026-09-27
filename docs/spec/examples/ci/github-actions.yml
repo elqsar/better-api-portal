@@ -1,6 +1,7 @@
 # Example workflow for a service repo (J1, J2): check every pull request
 # against what the portal has published, and publish from main and tags.
-# Copy to .github/workflows/api-portal.yml and set PORTAL_URL.
+# Copy to .github/workflows/api-portal.yml and set PORTAL_URL and
+# PORTAL_CLI_VERSION (a release of github.com/elqsar/better-api-portal).
 name: API portal
 
 on:
@@ -16,6 +17,7 @@ permissions:
 
 env:
   PORTAL_URL: https://api-portal.acme.internal
+  PORTAL_CLI_VERSION: v0.1.0
 
 jobs:
   portal:
@@ -23,12 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The release archive for the runner, checked against the release's
+      # SHA256SUMS. Alternatives: go install
+      # github.com/elqsar/better-api-portal/cmd/portal@$PORTAL_CLI_VERSION
+      # (after actions/setup-go; slower, it compiles), or the container
+      # image, which has the same binary.
       - name: Install the portal CLI
-        # Replace with however your organisation distributes the binary.
         run: |
-          curl -fsSL "${{ vars.PORTAL_CLI_URL }}" -o "$RUNNER_TEMP/portal"
-          chmod +x "$RUNNER_TEMP/portal"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; *) echo "unsupported runner: $RUNNER_ARCH"; exit 1 ;; esac
+          name="portal_${PORTAL_CLI_VERSION}_linux_${arch}"
+          base="https://github.com/elqsar/better-api-portal/releases/download/${PORTAL_CLI_VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -O "$base/$name.tar.gz" -O "$base/SHA256SUMS"
+          grep " $name.tar.gz\$" SHA256SUMS | sha256sum -c -
+          tar -xzf "$name.tar.gz"
+          echo "$RUNNER_TEMP/$name" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/$name/portal" version
 
       # The portal's own verdict on the change, with the org's rules and its
       # latest published versions as baselines; nothing is stored. A pull

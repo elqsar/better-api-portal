@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 func specOf(t *testing.T, docs map[string]string) *model.Spec {

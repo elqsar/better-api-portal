@@ -16,9 +16,9 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/httpapi"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // issuerServer is a CI OIDC issuer: discovery, keys, and a signer.

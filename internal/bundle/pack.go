@@ -17,7 +17,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // Bundle is a spec's files as pushed: the entry file plus its $ref closure,

@@ -10,7 +10,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/bundle"
 )
 
 // root is where a bundle's files appear to the loader; nothing is read

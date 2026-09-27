@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // Schema is a payload schema inside its version's bundle.

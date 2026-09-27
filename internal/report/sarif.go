@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // SARIF 2.1.0, as far as code scanning needs it.

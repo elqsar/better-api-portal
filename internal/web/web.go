@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 //go:embed templates/*.html

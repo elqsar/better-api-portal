@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // eventData is the event page (J4): one CloudEvents type across APIs.

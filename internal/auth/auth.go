@@ -19,9 +19,9 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/httpapi"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // TokenPrefix starts every static token, so it can't be mistaken for an ID

@@ -4,7 +4,7 @@ package descriptor
 import (
 	"path/filepath"
 
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // Descriptor is a parsed portal.yaml.

@@ -13,9 +13,9 @@ import (
 	oasdiff "github.com/oasdiff/oasdiff/diff"
 	"github.com/oasdiff/oasdiff/load"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/openapi"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // levelOverrides align oasdiff with rows of the 04-governance OpenAPI table

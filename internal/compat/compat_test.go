@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/spec/eventcatalog"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")

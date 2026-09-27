@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // upload reads the descriptor at descPath and bundles its APIs, as

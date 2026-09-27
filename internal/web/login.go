@@ -17,7 +17,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // Cookie names.

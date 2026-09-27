@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // RelTo returns abs as a slash path relative to root, or an error if it

@@ -16,13 +16,13 @@ import (
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/mod/semver"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/index"
-	"better-api-portal/internal/lint"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/index"
+	"github.com/elqsar/better-api-portal/internal/lint"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // Push request limits. Bundles have their own per-file and total limits.

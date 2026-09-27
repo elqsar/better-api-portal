@@ -6,10 +6,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/index"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/index"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 func reindexCmd() *cobra.Command {

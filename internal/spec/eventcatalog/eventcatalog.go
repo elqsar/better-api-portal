@@ -16,10 +16,10 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"better-api-portal/docs/spec/schemas"
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/docs/spec/schemas"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 var compiled = sync.OnceValues(func() (*jsonschema.Schema, error) {

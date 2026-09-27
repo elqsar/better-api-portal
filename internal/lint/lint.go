@@ -5,7 +5,7 @@ package lint
 import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // Config holds the org settings rules depend on.

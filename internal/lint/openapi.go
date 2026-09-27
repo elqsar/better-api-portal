@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // OpenAPITarget is what the openapi-default ruleset runs over.

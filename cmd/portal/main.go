@@ -17,18 +17,18 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"better-api-portal/internal/auth"
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/descriptor"
-	"better-api-portal/internal/httpapi"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/report"
-	"better-api-portal/internal/store"
-	"better-api-portal/internal/web"
-	"better-api-portal/internal/web/devoidc"
+	"github.com/elqsar/better-api-portal/internal/auth"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/report"
+	"github.com/elqsar/better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/web"
+	"github.com/elqsar/better-api-portal/internal/web/devoidc"
 )
 
 // Exit codes: 1 means the check found problems, 2 that it couldn't run.
@@ -56,10 +56,11 @@ func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "portal",
 		Short:         "Catalogue and govern HTTP and event APIs",
+		Version:       portalVersion(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd(), pushCmd(), reindexCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd(), pushCmd(), reindexCmd(), versionCmd())
 	return root
 }
 

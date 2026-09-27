@@ -7,8 +7,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // Sniff identifies the kind of a spec file from its top-level version key

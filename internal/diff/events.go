@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
 )
 
 // Events compares two versions of an event catalogue. Messages are matched

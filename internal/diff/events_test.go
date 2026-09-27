@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/compat"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/compat"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
 )
 
 // base is one message using every attribute the diff looks at.

@@ -15,9 +15,9 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // Result is a parsed OpenAPI document.

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/index"
-	"better-api-portal/internal/spec/eventcatalog"
-	"better-api-portal/internal/spec/openapi"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/index"
+	"github.com/elqsar/better-api-portal/internal/spec/eventcatalog"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 const example = "../../docs/spec/examples/orders-service"

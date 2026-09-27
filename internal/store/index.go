@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/mod/semver"
 
-	"better-api-portal/internal/index"
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/index"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // writeIndex stores a published version's index rows.

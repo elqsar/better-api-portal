@@ -17,10 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"better-api-portal/internal/auth"
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/check"
-	"better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/auth"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
 )
 
 // Client talks to one portal.

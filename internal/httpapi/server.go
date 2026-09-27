@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // Identity is an authenticated caller.

@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"better-api-portal/internal/config"
-	"better-api-portal/internal/store"
-	"better-api-portal/internal/web/devoidc"
+	"github.com/elqsar/better-api-portal/internal/config"
+	"github.com/elqsar/better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/web/devoidc"
 )
 
 // memStore keeps sessions in memory.

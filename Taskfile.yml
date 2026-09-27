@@ -23,6 +23,35 @@ tasks:
     cmds:
       - go build -o bin/portal ./cmd/portal
 
+  release:
+    desc: 'Build release archives for Linux and macOS (amd64, arm64) into dist/, with SHA256SUMS: task release -- v0.1.0 (default: git describe)'
+    vars:
+      VERSION:
+        sh: echo "{{.CLI_ARGS}}" | grep . || git describe --tags --always --dirty
+      PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+    cmds:
+      - rm -rf dist && mkdir -p dist
+      - for: { var: PLATFORMS }
+        cmd: |
+          os={{splitList "/" .ITEM | first}}; arch={{splitList "/" .ITEM | last}}
+          name=portal_{{.VERSION}}_${os}_${arch}
+          mkdir -p dist/$name
+          CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}}" -o dist/$name/portal ./cmd/portal
+          cp internal/web/static/LICENSES.txt dist/$name/
+          tar -C dist -czf dist/$name.tar.gz $name
+          rm -r dist/$name
+      - cd dist && shasum -a 256 *.tar.gz > SHA256SUMS
+      - ls -lh dist
+
+  image:
+    desc: 'Build the container image better-api-portal:<version> with podman: task image -- v0.1.0 (default: git describe)'
+    vars:
+      VERSION:
+        sh: echo "{{.CLI_ARGS}}" | grep . || git describe --tags --always --dirty
+    cmds:
+      # -p=2: the default podman machine (4 GB) runs out of memory otherwise.
+      - podman build -f Containerfile --build-arg VERSION={{.VERSION}} --build-arg GOFLAGS=-p=2 -t better-api-portal:{{.VERSION}} .
+
   test:
     desc: Run unit and golden-file tests
     cmds:

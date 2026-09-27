@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // Input is one API's new version compared with its baseline.

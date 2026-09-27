@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/yamldoc"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/yamldoc"
 )
 
 // Load reads and validates the descriptor at path. Problems with the

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 // API is the descriptor metadata indexed with each version.

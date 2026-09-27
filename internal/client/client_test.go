@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"better-api-portal/internal/auth"
-	"better-api-portal/internal/bundle"
-	"better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/auth"
+	"github.com/elqsar/better-api-portal/internal/bundle"
+	"github.com/elqsar/better-api-portal/internal/httpapi"
 )
 
 func env(kv ...string) func(string) string {

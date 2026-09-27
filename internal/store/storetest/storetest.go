@@ -15,7 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 var (

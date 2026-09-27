@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // searchLimit is how many hits are grouped by API; perGroup of them are

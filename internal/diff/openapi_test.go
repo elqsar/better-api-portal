@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/model"
-	"better-api-portal/internal/spec/openapi"
+	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/spec/openapi"
 )
 
 // baseOAS has a request body, a query parameter and response enums for the

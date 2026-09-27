@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/model"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")

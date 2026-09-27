@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"better-api-portal/internal/store"
-	"better-api-portal/internal/store/storetest"
+	"github.com/elqsar/better-api-portal/internal/store"
+	"github.com/elqsar/better-api-portal/internal/store/storetest"
 )
 
 func search(t *testing.T, s *store.Store, sq store.SearchQuery) []store.Hit {
