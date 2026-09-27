@@ -56,6 +56,7 @@ specs are available yet.
 | 28 | `88cd609` | Consumers grouped by service (repo) on the event page and the dependencies tab |
 | 29 | `90ac5ba` | Compatible payload changes name their fields (`compat.FieldChanges`) |
 | 30 | `a439b02` | API list and page titles fall back to the latest spec's title |
+| 31 | | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
 
 ### J1/J2 against a portal
 ```sh
@@ -88,7 +89,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 | Package | Role |
 |---|---|
-| `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `push`, `migrate`, `reindex`, `serve`, `admin token` |
+| `cmd/portal` | cobra CLI: `init`, `check`, `diff`, `bundle`, `push`, `migrate`, `reindex`, `serve`, `admin token` |
 | `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles; `DiffBundles` compares two stored versions |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
@@ -106,6 +107,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; `web/devoidc` is the `--dev-login` stub provider |
 | `internal/textdiff` | Line diff per file (go-udiff's `lcs`), both sides' line numbers, `Fold` for unchanged runs |
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
+| `internal/initkit` | `portal init`: `Detect` specs (via `descriptor.Sniff`), `Propose` ids, render `Descriptor` and the GitHub `Workflow` (embedded template) |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
 | `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `TypeConsumers`, `Dependencies`, `Search`; `storetest.SeedAPIs` makes synthetic APIs |
@@ -331,6 +333,36 @@ openapi, compat).
   image are given as alternatives in a comment.
 - There is no project `LICENSE` yet; the archives carry only third-party
   notices. Go module licenses aren't collected into the archives either.
+
+## Decisions (M4 onboarding)
+
+- **`portal init`** (`internal/initkit`, `cmd/portal/init.go`) searches
+  the repo for OpenAPI 3, AsyncAPI 3 and event catalogue files with
+  `descriptor.Sniff`. It skips hidden directories, `node_modules`, `vendor`,
+  `dist`, `bin`, `build`, `target`, `testdata` and files over 8 MB, and
+  reports Swagger 2 and AsyncAPI 2 files with Sniff's conversion hint.
+  - **Ids:** `<service>-http` for the only OpenAPI spec and
+    `<service>-events` for the only event spec. The service is the directory
+    name without a `-service`/`-svc`/`-api` suffix, or `--service`, so the
+    orders example gets its real ids back (tested). A kind with several
+    specs is named from each title (else the file name). Ids are made valid
+    for the id pattern and unique (`-2`, …).
+  - **Descriptor:** `--owner` is required (no placeholder that would fail
+    later). `lifecycle: production`; commented hints for `system`, `links`,
+    `environments` (URL or broker per kind) and `consumes`. The generated
+    file passes the descriptor schema (tested).
+  - It writes `portal.yaml` (and the workflow with `--ci github`), runs
+    `check` on it without a config and prints next steps. Exit 1 when the
+    check has errors. Nothing is overwritten without `--force`; `--stdout`
+    only prints.
+- **CI template:** `internal/initkit/templates/github-actions.yml` is
+  embedded; `Workflow` replaces the example's `PORTAL_URL` and
+  `PORTAL_CLI_VERSION`. `TestWorkflowExample` keeps
+  `docs/spec/examples/ci/github-actions.yml` byte-identical to it. `--ci`
+  needs `--portal-url`. `--cli-version` defaults to the binary's own
+  version when it is a release (not a pseudo-version or "devel"). GitHub
+  only (Q1). The template notes monorepos (`--descriptor`, one job per
+  descriptor).
 
 ## Decisions (push client)
 
