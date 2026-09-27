@@ -22,6 +22,8 @@ import (
 	"better-api-portal/internal/config"
 	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/httpapi"
+	"better-api-portal/internal/index"
+	"better-api-portal/internal/spec/eventcatalog"
 	"better-api-portal/internal/store"
 	"better-api-portal/internal/store/storetest"
 )
@@ -370,16 +372,31 @@ func TestEventPage(t *testing.T) {
 	// Deprecated, consumed as part of the whole API, and declared twice.
 	st := s.push(
 		[3]string{"api/events.yaml", "version: 1.4.0", "version: 1.5.0"},
-		[3]string{"api/events.yaml", "    summary: An order was placed.", "    summary: An order was placed.\n    deprecated: true"},
-		[3]string{"portal.yaml", "consumes:\n", "consumes:\n  - api: orders-events\n"},
-		[3]string{"portal.yaml", "consumes:", `  - id: orders-events-copy
-    kind: cloudevents
-    spec: api/events.yaml
-    lifecycle: production
-
-consumes:`})
-	if st["orders-events"] != "published" || st["orders-events-copy"] != "published" {
+		[3]string{"api/events.yaml", "    summary: An order was placed.", "    summary: An order was placed.\n    deprecated: true"})
+	if st["orders-events"] != "published" {
 		t.Fatalf("statuses %v", st)
+	}
+	// ce-type-unique rejects a second declaration on push, so the conflict
+	// is written to the store directly, as data from before the rule.
+	ctx := context.Background()
+	repo, err := s.st.Repo(ctx, "acme/legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, _, err := eventcatalog.Parse(example, filepath.Join(example, "api/events.yaml"))
+	if err != nil || res == nil {
+		t.Fatal(err)
+	}
+	if _, err := s.st.Record(ctx, store.Push{
+		API: store.API{ID: "orders-events-copy", Kind: "cloudevents", Owner: "team-orders", Lifecycle: "production",
+			Meta: map[string]any{"consumes": []map[string]any{{"api": "orders-events"}}}},
+		RepoID:  repo,
+		Actor:   "test",
+		Version: store.Version{Semver: "1.5.0", ContentHash: "sha256:legacy", Status: store.StatusPublished},
+		Bundle:  []byte("legacy"),
+		Index:   index.Build(index.API{ID: "orders-events-copy"}, res.Spec),
+	}); err != nil {
+		t.Fatal(err)
 	}
 	_, body, _ = s.get(c, "/events/com.acme.orders.order.created.v1")
 	contains(t, "changed event", body, "Deprecated.", "orders-events</a> 1.5.0",

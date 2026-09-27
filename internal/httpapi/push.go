@@ -20,6 +20,7 @@ import (
 	"better-api-portal/internal/check"
 	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/index"
+	"better-api-portal/internal/lint"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/store"
 )
@@ -202,6 +203,11 @@ func (s *Server) process(ctx context.Context, who *Identity, req *pushRequest, d
 		return nil, err
 	}
 	resp.Findings = append(resp.Findings, consumes...)
+	portal, err := s.portalRules(ctx, &d, r.APIs, claimedBy)
+	if err != nil {
+		return nil, err
+	}
+	resp.Findings = append(resp.Findings, portal...)
 	descErrors := hasError(resp.Findings, "")
 
 	var repoID int64
@@ -217,6 +223,11 @@ func (s *Server) process(ctx context.Context, who *Identity, req *pushRequest, d
 	now := time.Now().UTC()
 	for _, api := range d.APIs {
 		res, parsed := results[api.ID]
+		// The portal-wide rules are lint rules too, so they count in the
+		// score.
+		if fs := forAPI(portal, api.ID); len(fs) > 0 {
+			res.Score = max(0, res.Score-(100-lint.Score(fs)))
+		}
 		out := PushResult{APIResult: res, Status: StatusRejected}
 		out.ID = api.ID
 		if api.Kind == descriptor.KindAsyncAPI {

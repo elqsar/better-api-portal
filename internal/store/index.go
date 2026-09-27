@@ -235,6 +235,66 @@ func (s *Store) MessageRoles(ctx context.Context, msgType string) ([]MessageRole
 	})
 }
 
+// TypeDeclaration is an API whose latest version declares a message type.
+type TypeDeclaration struct {
+	Type, APIID, Role, Semver, Lifecycle string
+}
+
+// TypeDeclarations lists the APIs whose latest version declares any of the
+// types, retired ones included: they keep their types (ce-type-unique).
+func (s *Store) TypeDeclarations(ctx context.Context, types []string) ([]TypeDeclaration, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT m.type, m.api_id, m.role, v.semver, a.lifecycle
+		FROM messages m
+		JOIN apis a ON a.latest_version_id = m.version_id
+		JOIN versions v ON v.id = m.version_id
+		WHERE m.type = ANY($1)
+		ORDER BY m.type, m.api_id`, types)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (TypeDeclaration, error) {
+		var d TypeDeclaration
+		err := r.Scan(&d.Type, &d.APIID, &d.Role, &d.Semver, &d.Lifecycle)
+		return d, err
+	})
+}
+
+// Topic is a binding's destination: a Kafka topic, NATS subject, queue….
+type Topic struct{ Protocol, Address string }
+
+// TopicProducer is an API that produces to a topic, with its owner team.
+type TopicProducer struct {
+	Topic
+	APIID, Owner string
+}
+
+// TopicProducers lists the APIs whose latest version produces to any of
+// the topics. Retired APIs don't produce any more and are left out
+// (ce-topic-single-owner).
+func (s *Store) TopicProducers(ctx context.Context, topics []Topic) ([]TopicProducer, error) {
+	protocols, addresses := make([]string, len(topics)), make([]string, len(topics))
+	for i, t := range topics {
+		protocols[i], addresses[i] = t.Protocol, t.Address
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT b.protocol, b.address, b.api_id, a.owner
+		FROM bindings b
+		JOIN unnest($1::text[], $2::text[]) AS t(protocol, address)
+		     ON b.protocol = t.protocol AND b.address = t.address
+		JOIN apis a ON a.latest_version_id = b.version_id
+		WHERE b.role = 'produces' AND a.lifecycle <> 'retired'
+		ORDER BY b.protocol, b.address, b.api_id`, protocols, addresses)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (TopicProducer, error) {
+		var p TopicProducer
+		err := r.Scan(&p.Protocol, &p.Address, &p.APIID, &p.Owner)
+		return p, err
+	})
+}
+
 // TypeConsumers lists the APIs that declare they consume the message type:
 // by naming it, or by consuming the whole of an API in owners, the APIs
 // that declare the type.

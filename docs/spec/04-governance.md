@@ -78,6 +78,8 @@ Rulesets are **vacuum / Spectral-format YAML** files in the portal config, so th
 | `ce-description` | warn | `description` is present on every `produces` message. |
 | `ce-json-only` | error (MVP) | `datacontenttype` is JSON (`application/json` or `+json`). Other formats come in P3. |
 
+`ce-type-unique` and `ce-topic-single-owner` compare against the rest of the portal, so they run on the server: in `portal push` and `portal push --dry-run`, not in an offline `portal check`. They look at every API's latest version plus the other APIs in the same push, and count in the score like any lint rule. `ce-type-unique` is strict: a type moves from one API to another in two pushes (remove it, then add it). Retired APIs keep their types until they are released (below).
+
 ### Score
 `score = 100 − Σ(weight × findings)`, floored at 0, where the weights are error 10, warn 2 and info 0. The score is shown per version and aggregated per team. Its only purpose is visibility: gating uses severities, never the score.
 

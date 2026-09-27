@@ -360,3 +360,141 @@ func TestPushBadRequests(t *testing.T) {
 		})
 	}
 }
+
+// service writes a checkout from files (path → content).
+func service(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for p, content := range files {
+		path := filepath.Join(dir, p)
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// rival is team-payments' service: one events API per id, each declaring
+// the types, produced to Kafka orders.events, the topic orders-events uses.
+func rival(t *testing.T, version string, ids []string, types ...string) string {
+	t.Helper()
+	desc := "apiVersion: portal/v1\nowner: team-payments\napis:\n"
+	for _, id := range ids {
+		desc += fmt.Sprintf("  - { id: %s, kind: cloudevents, spec: api/events.yaml, lifecycle: production }\n", id)
+	}
+	events := fmt.Sprintf(`eventcatalog: "1.0"
+title: Rival events
+version: %s
+defaults:
+  source: /payments-service
+  datacontenttype: application/json
+  bindings:
+    - kafka: { topic: orders.events, key: { from: data, pointer: /orderId }, mode: binary }
+messages:
+`, version)
+	for _, ty := range types {
+		events += fmt.Sprintf(`  - type: %s
+    role: produces
+    summary: Something happened.
+    description: Emitted when it happens.
+    dataschema:
+      schema: { type: object, required: [orderId], properties: { orderId: { type: string } } }
+`, ty)
+	}
+	return service(t, map[string]string{"portal.yaml": desc, "api/events.yaml": events})
+}
+
+func findings(r *httpapi.PushResponse, rule string) []model.Finding {
+	var out []model.Finding
+	for _, f := range r.Findings {
+		if f.RuleID == rule {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func score(r *httpapi.PushResponse, id string) int {
+	for _, a := range r.APIs {
+		if a.ID == id {
+			return a.Score
+		}
+	}
+	return -1
+}
+
+func TestPushPortalRules(t *testing.T) {
+	srv := newServer(t)
+	expect(t, push(t, srv, "/api/v1/push", "acme/orders", checkout(t), nil), "orders-http published", "orders-events published")
+
+	// Another team declares an orders type: rejected, however it is
+	// declared. The shared topic is a warning.
+	r := push(t, srv, "/api/v1/push", "acme/payments",
+		rival(t, "1.0.0", []string{"payments-events"}, "com.acme.payments.payment.captured.v1", "com.acme.orders.order.created.v1"), nil)
+	expect(t, r, "payments-events rejected")
+	dup := findings(r, "ce-type-unique")
+	if len(dup) != 1 || dup[0].API != "payments-events" || dup[0].File != "api/events.yaml" || dup[0].Pointer != "/messages/1" || dup[0].Line == 0 ||
+		!strings.Contains(dup[0].Message, "com.acme.orders.order.created.v1 is already declared by orders-events (produces, 1.4.0)") ||
+		!strings.Contains(dup[0].Message, "list it under consumes in portal.yaml") {
+		t.Errorf("ce-type-unique = %+v", dup)
+	}
+	topic := findings(r, "ce-topic-single-owner")
+	if len(topic) != 1 || topic[0].Severity != model.SeverityWarn || topic[0].Pointer != "/messages/0" ||
+		!strings.Contains(topic[0].Message, "kafka orders.events is also produced to by orders-events (team-orders)") {
+		t.Errorf("ce-topic-single-owner = %+v", topic)
+	}
+	rejectedScore := score(r, "payments-events")
+
+	// The dry run gives the same verdict.
+	expect(t, push(t, srv, "/api/v1/check", "acme/payments",
+		rival(t, "1.0.0", []string{"payments-events"}, "com.acme.payments.payment.captured.v1", "com.acme.orders.order.created.v1"), nil),
+		"payments-events rejected")
+
+	// Its own types publish; the shared topic still warns, and costs 2
+	// points where the duplicate type cost 10.
+	r = push(t, srv, "/api/v1/push", "acme/payments",
+		rival(t, "1.0.0", []string{"payments-events"}, "com.acme.payments.payment.captured.v1", "com.acme.payments.refund.issued.v1"), nil)
+	expect(t, r, "payments-events published")
+	if len(findings(r, "ce-type-unique")) != 0 || len(findings(r, "ce-topic-single-owner")) != 1 {
+		t.Errorf("findings %+v", r.Findings)
+	}
+	if got := score(r, "payments-events"); got != rejectedScore+10 {
+		t.Errorf("score %d, want %d (the rejected push's %d without the error)", got, rejectedScore+10, rejectedScore)
+	}
+
+	// The owner's next version sees the other team on its topic, and isn't
+	// flagged for its own types.
+	r = push(t, srv, "/api/v1/push", "acme/orders", checkout(t,
+		[3]string{"api/events.yaml", "version: 1.4.0", "version: 1.4.1"}), nil)
+	expect(t, r, "orders-http unchanged", "orders-events published")
+	if len(findings(r, "ce-type-unique")) != 0 {
+		t.Errorf("own types flagged: %+v", findings(r, "ce-type-unique"))
+	}
+	if topic := findings(r, "ce-topic-single-owner"); len(topic) != 1 || !strings.Contains(topic[0].Message, "payments-events (team-payments)") {
+		t.Errorf("owner's topic warning = %+v", topic)
+	}
+}
+
+// Two APIs of one push can't both declare a type; one team's APIs may
+// share a topic.
+func TestPushPortalRulesWithinPush(t *testing.T) {
+	srv := newServer(t)
+	r := push(t, srv, "/api/v1/push", "acme/payments",
+		rival(t, "1.0.0", []string{"payments-events", "refunds-events"}, "com.acme.payments.refund.issued.v1"), nil)
+	expect(t, r, "payments-events rejected", "refunds-events rejected")
+	var got []string
+	for _, f := range findings(r, "ce-type-unique") {
+		got = append(got, f.API+": "+f.Message[:strings.Index(f.Message, ";")])
+	}
+	want := []string{
+		"payments-events: com.acme.payments.refund.issued.v1 is already declared by refunds-events (in this push)",
+		"refunds-events: com.acme.payments.refund.issued.v1 is already declared by payments-events (in this push)",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("ce-type-unique = %q, want %q", got, want)
+	}
+	if topic := findings(r, "ce-topic-single-owner"); len(topic) != 0 {
+		t.Errorf("same-team topic warned: %+v", topic)
+	}
+}
