@@ -3,3 +3,9 @@
 {{define "severity"}}<span class="badge sev-{{.}}">{{.}}</span>{{end}}
 {{define "impact"}}<span class="badge impact-{{.}}">{{.}}</span>{{end}}
 {{define "method"}}<span class="method method-{{.}}">{{.}}</span>{{end}}
+
+{{/* consumers lists consumerRepos: the service, its owner teams, and its APIs. */}}
+{{define "consumers"}}<ul class="plain consumers">{{range .}}<li><strong>{{.Repo}}</strong>
+  <span class="muted">{{range $i, $o := .Owners}}{{if $i}}, {{end}}<a href="/apis?team={{$o}}">{{$o}}</a>{{end}}</span>
+  {{with .Types}}<span class="muted">({{range $i, $t := .}}{{if $i}}, {{end}}<code>{{$t}}</code>{{end}})</span>{{else}}<span class="muted">(everything from {{.To}})</span>{{end}}
+  <br><span class="muted">APIs:</span> {{range $i, $a := .APIs}}{{if $i}}, {{end}}<a href="/apis/{{$a}}">{{$a}}</a>{{end}}</li>{{end}}</ul>{{end}}

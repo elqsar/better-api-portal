@@ -300,38 +300,41 @@ func (s *Store) TopicProducers(ctx context.Context, topics []Topic) ([]TopicProd
 // that declare the type.
 func (s *Store) TypeConsumers(ctx context.Context, msgType string, owners []string) ([]Dependency, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT from_api, to_api, types FROM dependencies
-		WHERE $1 = ANY(types) OR (cardinality(types) = 0 AND to_api = ANY($2))
-		ORDER BY from_api, to_api`, msgType, owners)
+		SELECT d.from_api, d.to_api, d.types, r.ci_subject, a.owner
+		FROM dependencies d JOIN apis a ON a.id = d.from_api JOIN repos r ON r.id = a.repo_id
+		WHERE $1 = ANY(d.types) OR (cardinality(d.types) = 0 AND d.to_api = ANY($2))
+		ORDER BY r.ci_subject, d.from_api, d.to_api`, msgType, owners)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Dependency, error) {
-		var d Dependency
-		err := r.Scan(&d.From, &d.To, &d.Types)
-		return d, err
-	})
+	return pgx.CollectRows(rows, scanDependency)
 }
 
 // Dependency is one API's declared use of another.
 type Dependency struct {
 	From, To string
 	Types    []string // empty means the whole API
+	// Repo and Owner are From's: consumes is declared per repo, so every
+	// API of a repo has the same dependencies.
+	Repo, Owner string
+}
+
+func scanDependency(r pgx.CollectableRow) (Dependency, error) {
+	var d Dependency
+	err := r.Scan(&d.From, &d.To, &d.Types, &d.Repo, &d.Owner)
+	return d, err
 }
 
 // Dependencies lists what the API consumes and who consumes it.
 func (s *Store) Dependencies(ctx context.Context, apiID string) (consumes, consumers []Dependency, err error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT from_api, to_api, types FROM dependencies
-		WHERE from_api = $1 OR to_api = $1 ORDER BY from_api, to_api`, apiID)
+		SELECT d.from_api, d.to_api, d.types, r.ci_subject, a.owner
+		FROM dependencies d JOIN apis a ON a.id = d.from_api JOIN repos r ON r.id = a.repo_id
+		WHERE d.from_api = $1 OR d.to_api = $1 ORDER BY r.ci_subject, d.from_api, d.to_api`, apiID)
 	if err != nil {
 		return nil, nil, err
 	}
-	deps, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Dependency, error) {
-		var d Dependency
-		err := r.Scan(&d.From, &d.To, &d.Types)
-		return d, err
-	})
+	deps, err := pgx.CollectRows(rows, scanDependency)
 	if err != nil {
 		return nil, nil, err
 	}

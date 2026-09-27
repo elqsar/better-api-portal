@@ -82,7 +82,7 @@ type apiData struct {
 	Spec      *model.Spec
 	Report    *store.Report
 	Consumes  []store.Dependency
-	Consumers []store.Dependency
+	Consumers []consumerRepo
 	Versions  []store.VersionSummary
 	Published []string // highest first, for the compare form
 	// Findings by severity, for the lint tab.
@@ -164,10 +164,12 @@ func (s *Server) apiOverview(w http.ResponseWriter, r *http.Request, u *User) {
 		s.fail(w, r, u, err)
 		return
 	}
-	if d.Consumes, d.Consumers, err = s.Store.Dependencies(r.Context(), d.API.ID); err != nil {
+	var consumers []store.Dependency
+	if d.Consumes, consumers, err = s.Store.Dependencies(r.Context(), d.API.ID); err != nil {
 		s.fail(w, r, u, err)
 		return
 	}
+	d.Consumers = byRepo(consumers)
 	s.renderAPI(w, r, u, d)
 }
 

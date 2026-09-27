@@ -400,8 +400,9 @@ func TestEventPage(t *testing.T) {
 	}
 	_, body, _ = s.get(c, "/events/com.acme.orders.order.created.v1")
 	contains(t, "changed event", body, "Deprecated.", "orders-events</a> 1.5.0",
-		// orders-http's push is unchanged, which doesn't update its consumes.
-		`<a href="/apis/orders-events-copy">orders-events-copy</a> <span class="muted">(everything from orders-events)</span>`,
+		// Consumers are grouped by repo.
+		"<strong>acme/legacy</strong>", `(everything from orders-events)</span>`,
+		`<span class="muted">APIs:</span> <a href="/apis/orders-events-copy">orders-events-copy</a>`,
 		"Declared by more than one API.", `<a href="/apis/orders-events-copy/versions/1.5.0">orders-events-copy</a> (produces)`)
 }
 

@@ -72,7 +72,7 @@
 
     {{with $d.Consumers}}
     <h2>Consumed by</h2>
-    <ul class="plain">{{range .}}<li><a href="/apis/{{.From}}">{{.From}}</a>{{if not .Types}} <span class="muted">(everything from {{.To}})</span>{{end}}</li>{{end}}</ul>
+    {{template "consumers" .}}
     {{end}}
   </div>
 

@@ -89,7 +89,7 @@
     {{end}}
     {{with .Data.Consumers}}
     <h3>Used by</h3>
-    <ul class="plain">{{range .}}<li><a href="/apis/{{.From}}">{{.From}}</a>{{with .Types}} <span class="muted">({{range $i, $t := .}}{{if $i}}, {{end}}<code>{{$t}}</code>{{end}})</span>{{end}}</li>{{end}}</ul>
+    {{template "consumers" .}}
     {{end}}
     {{end}}
   </div>

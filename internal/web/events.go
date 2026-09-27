@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 
 	"github.com/elqsar/better-api-portal/internal/check"
 	"github.com/elqsar/better-api-portal/internal/model"
@@ -20,7 +21,7 @@ type eventData struct {
 	Owner    *store.MessageRole
 	Message  *model.Message
 	// Consumers declare the type, or its whole API, in `consumes`.
-	Consumers []store.Dependency
+	Consumers []consumerRepo
 
 	Schema    *schemaNode
 	SchemaErr string
@@ -53,9 +54,14 @@ func (s *Server) event(w http.ResponseWriter, r *http.Request, u *User) {
 	for _, m := range d.Declared {
 		owners = append(owners, m.APIID)
 	}
-	if d.Consumers, err = s.Store.TypeConsumers(ctx, d.Type, owners); err != nil {
+	deps, err := s.Store.TypeConsumers(ctx, d.Type, owners)
+	if err != nil {
 		s.fail(w, r, u, err)
 		return
+	}
+	d.Consumers = byRepo(deps)
+	for i := range d.Consumers {
+		d.Consumers[i].Types = nil // they name this type; only "everything from" says more
 	}
 	if len(d.Declared) == 0 && len(d.Consumers) == 0 {
 		s.error(w, r, u, http.StatusNotFound, "No such event type", "No API in the portal declares or consumes "+d.Type+".")
@@ -157,4 +163,35 @@ func propValue(v any) string {
 		return ""
 	}
 	return string(b)
+}
+
+// consumerRepo is a service consuming an API or type: consumes is declared
+// per repo, so its APIs are listed together rather than as consumers each.
+type consumerRepo struct {
+	Repo   string
+	Owners []string // of its consuming APIs, sorted
+	APIs   []string
+	// Types narrows the dependency; empty means everything from To.
+	Types []string
+	To    string
+}
+
+// byRepo groups dependencies by the consuming repo, keeping their order
+// (the store sorts by repo).
+func byRepo(deps []store.Dependency) []consumerRepo {
+	var out []consumerRepo
+	for _, d := range deps {
+		if n := len(out); n == 0 || out[n-1].Repo != d.Repo {
+			out = append(out, consumerRepo{Repo: d.Repo, Types: d.Types, To: d.To})
+		}
+		g := &out[len(out)-1]
+		if !slices.Contains(g.APIs, d.From) {
+			g.APIs = append(g.APIs, d.From)
+		}
+		if !slices.Contains(g.Owners, d.Owner) {
+			g.Owners = append(g.Owners, d.Owner)
+			slices.Sort(g.Owners)
+		}
+	}
+	return out
 }

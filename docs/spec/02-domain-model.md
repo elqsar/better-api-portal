@@ -67,7 +67,7 @@ Descriptor-level fields such as owner, lifecycle and tags belong to the **API**,
 Every named or referenced schema gets a stable **pointer** inside its version, e.g. `#/components/schemas/Order` or `schemas/order-created.v1.json`. It also gets a flattened **field index** (`path`, `type`, `required`, `description`) that feeds search and the structured diff. Schemas are not deduplicated across APIs in MVP.
 
 ### Dependency
-`from_api` → `to_api`, with optional `types[]`. It comes from the descriptor's `consumes`, which is declared per repo, so the dependency is attached to **every API in that repo**. A dependency on an unknown API id is kept as *dangling* and resolves when that API appears.
+`from_api` → `to_api`, with optional `types[]`. It comes from the descriptor's `consumes`, which is declared per repo, so the dependency is attached to **every API in that repo**. A dependency on an unknown API id is kept as *dangling* and resolves when that API appears. Because it is declared per repo, the UI lists consumers by **service (repo)**, with its APIs underneath, not as separate consumers.
 
 Combining messages with `role: produces` and dependencies gives the **event flow graph** (phase 2): for each event type, its producer and its declared consumers.
 

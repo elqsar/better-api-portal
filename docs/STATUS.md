@@ -53,6 +53,7 @@ specs are available yet.
 | 25 | `deb7693` | Server rules `ce-type-unique` (error) and `ce-topic-single-owner` (warn) in push and `--dry-run`, against the portal and the rest of the push; they count in the score |
 | 26 | `5b39805` | CLI distribution: module `github.com/elqsar/better-api-portal`, `portal version`, `task release` (static tar.gz + SHA256SUMS), `Containerfile` + `task image`; the example workflow installs a pinned release |
 | 27 | `c76fb54` | An `unchanged` push updates the API's metadata (descriptor-only changes need no version bump) |
+| 28 | | Consumers grouped by service (repo) on the event page and the dependencies tab |
 
 ### J1/J2 against a portal
 ```sh
@@ -580,6 +581,13 @@ be changed in M3's first commit to match.
     fixed: a removed message type linked to its event page, which is a
     404 once nothing declares it.
   - J3's latency target stays with `TestSearchLatency500`.
+- **Consumers by service** (after M3): `consumes` stays per descriptor
+  (decided 2026-09-27; no per-API `consumes`). `store.Dependency` carries the
+  consuming API's repo and owner, and `web.byRepo` groups the event page's
+  "Consumed by" and the dependencies tab's "Used by" into one entry per
+  repo: its CI subject, owner teams (linked to `/apis?team=`), the types
+  (or "everything from"), and its APIs. The event page leaves out the types,
+  which would only name the page's own type.
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
   skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page (done);
   (6) search with a 500-API benchmark (done); (7) diff page (done); (8) J3–J5 acceptance
@@ -643,10 +651,6 @@ Next in the code: M4, the onboarding kit (CI templates, `portal init`, a
 migration guide).
 
 Found by the journeys, worth deciding before M4:
-- `consumes` is per descriptor, so every API of the consuming service is
-  listed as a consumer: J4's "Consumed by" shows `payments-http` next to
-  `payments-events`. Options: an optional per-API `consumes`, or show
-  the service (repo) rather than each API.
 - A compatible payload change is one line ("payload schema changed
   compatibly"), without the fields added; J5 asks for schema fields.
   Breaking changes do name them.
