@@ -58,7 +58,7 @@ specs are available yet.
 | 30 | `a439b02` | API list and page titles fall back to the latest spec's title |
 | 31 | `ac98731` | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
 | 32 | `ade16db` | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
-| 33 | | M4: onboarding guide `docs/guide/onboarding.md` |
+| 33 | `397af16` | M4: onboarding guide `docs/guide/onboarding.md` |
 
 ### J1/J2 against a portal
 ```sh
