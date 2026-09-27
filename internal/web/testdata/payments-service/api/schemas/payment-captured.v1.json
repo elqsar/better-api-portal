@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaymentCaptured",
+  "type": "object",
+  "required": ["orderId", "amount"],
+  "properties": {
+    "orderId": { "type": "string" },
+    "amount": { "type": "integer", "description": "Minor units." }
+  }
+}

@@ -1,0 +1,67 @@
+<header class="api-head">
+  <p class="crumbs"><a href="/apis">APIs</a> / <a href="/apis/orders-events">orders-events</a> / Compare</p>
+  <h1>Compare versions <span class="badge">cloudevents</span></h1>
+</header>
+<form class="filters compare" action="/apis/orders-events/diff" method="get">
+  <label>From <select name="from">
+    <option >2.0.0</option><option selected>1.4.0</option>
+  </select></label>
+  <label>to <select name="to">
+    <option selected>2.0.0</option><option >1.4.0</option>
+  </select></label>
+  <button class="primary" type="submit">Compare</button>
+</form>
+<div id="diff-body">
+<p>
+  <a href="/apis/orders-events/versions/1.4.0">1.4.0</a> →
+  <a href="/apis/orders-events/versions/2.0.0">2.0.0</a>
+</p>
+<nav class="tabs" aria-label="Diff views" hx-target="#diff-body" hx-swap="outerHTML" hx-push-url="true">
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0" hx-get="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0" aria-current="page">Changes</a>
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0&amp;view=raw" hx-get="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0&amp;view=raw" >Raw diff</a>
+</nav>
+<div class="tab-panel">
+<p>
+  <strong class="sev-text-error">1 breaking</strong> ·
+  2 additive ·
+  1 docs only ·
+  4 changes to the contract
+</p>
+<table>
+  <tbody>
+  <tr>
+    <td class="nowrap"><span class="badge impact-breaking">breaking</span></td>
+    <td>com.acme.orders.order.cancel.requested.v1 (receives) was removed
+      <div class="muted"><code>ce-message-removed</code> <code>BRK-CE-12cf18</code>
+         · <code>com.acme.orders.order.cancel.requested.v1</code>
+         · api/events.yaml:44</div>
+    </td>
+  </tr>
+  <tr>
+    <td class="nowrap"><span class="badge impact-additive">additive</span></td>
+    <td>com.acme.orders.order.created.v1: payload schema changed compatibly (FORWARD)
+      <div class="muted"><code>ce-payload-changed</code>
+         · <a href="/events/com.acme.orders.order.created.v1"><code>com.acme.orders.order.created.v1</code></a>
+         · api/events.yaml:22</div>
+    </td>
+  </tr>
+  <tr>
+    <td class="nowrap"><span class="badge impact-additive">additive</span></td>
+    <td>com.acme.orders.order.cancel.requested.v2 (receives) was added
+      <div class="muted"><code>ce-message-added</code>
+         · <a href="/events/com.acme.orders.order.cancel.requested.v2"><code>com.acme.orders.order.cancel.requested.v2</code></a>
+         · api/events.yaml:44</div>
+    </td>
+  </tr>
+  <tr>
+    <td class="nowrap"><span class="badge impact-docs">docs</span></td>
+    <td>com.acme.orders.order.created.v1: summary changed
+      <div class="muted"><code>ce-docs-changed</code>
+         · <a href="/events/com.acme.orders.order.created.v1"><code>com.acme.orders.order.created.v1</code></a>
+         · api/events.yaml:16</div>
+    </td>
+  </tr>
+  </tbody>
+</table>
+</div>
+</div>

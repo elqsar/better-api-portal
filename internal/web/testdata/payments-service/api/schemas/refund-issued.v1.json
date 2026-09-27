@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefundIssued",
+  "type": "object",
+  "required": ["refundId", "orderId", "amount"],
+  "properties": {
+    "refundId": { "type": "string" },
+    "orderId": { "type": "string" },
+    "amount": { "type": "integer", "description": "Minor units refunded." }
+  }
+}

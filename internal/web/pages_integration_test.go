@@ -32,10 +32,11 @@ const example = "../../docs/spec/examples/orders-service"
 
 // site is a portal with the example published, and the UI's server.
 type site struct {
-	t   *testing.T
-	st  *store.Store
-	ui  *httptest.Server
-	api *client.Client
+	t       *testing.T
+	st      *store.Store
+	ui      *httptest.Server
+	apiURL  string
+	clients map[string]*client.Client // by repo
 }
 
 func newSite(t *testing.T) *site {
@@ -51,14 +52,6 @@ func newSite(t *testing.T) *site {
 
 	apiSrv := httptest.NewServer((&httpapi.Server{Store: st, Config: cfg, Auth: auth.NewCI(nil, st, nil), Log: log}).Handler())
 	t.Cleanup(apiSrv.Close)
-	tok, hash := auth.NewToken()
-	if _, err := st.CreateToken(context.Background(), "acme/orders", hash, time.Now().Add(time.Hour), "test"); err != nil {
-		t.Fatal(err)
-	}
-	c, err := client.New(apiSrv.URL, &client.Credentials{Token: tok})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	ui, err := New(Options{Store: st, Config: cfg, Log: log})
 	if err != nil {
@@ -66,16 +59,40 @@ func newSite(t *testing.T) *site {
 	}
 	uiSrv := httptest.NewServer(ui.Handler())
 	t.Cleanup(uiSrv.Close)
-	return &site{t: t, st: st, ui: uiSrv, api: c}
+	return &site{t: t, st: st, ui: uiSrv, apiURL: apiSrv.URL, clients: map[string]*client.Client{}}
+}
+
+// client pushes as the repo, with a static token.
+func (s *site) client(repo string) *client.Client {
+	s.t.Helper()
+	if c, ok := s.clients[repo]; ok {
+		return c
+	}
+	tok, hash := auth.NewToken()
+	if _, err := s.st.CreateToken(context.Background(), repo, hash, time.Now().Add(time.Hour), "test"); err != nil {
+		s.t.Fatal(err)
+	}
+	c, err := client.New(s.apiURL, &client.Credentials{Token: tok})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.clients[repo] = c
+	return c
 }
 
 // push publishes a copy of the example with edits (file, old, new) and
 // returns each API's status.
 func (s *site) push(edits ...[3]string) map[string]string {
+	s.t.Helper()
+	return s.pushDir("acme/orders", example, edits...)
+}
+
+// pushDir publishes a copy of the service in src as the repo.
+func (s *site) pushDir(repo, src string, edits ...[3]string) map[string]string {
 	t := s.t
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.CopyFS(dir, os.DirFS(example)); err != nil {
+	if err := os.CopyFS(dir, os.DirFS(src)); err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
@@ -95,7 +112,7 @@ func (s *site) push(edits ...[3]string) map[string]string {
 		t.Fatal(err)
 	}
 	desc, _ := os.ReadFile(filepath.Join(dir, "portal.yaml"))
-	resp, err := s.api.Push(context.Background(), desc, bundles, nil, false)
+	resp, err := s.client(repo).Push(context.Background(), desc, bundles, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

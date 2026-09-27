@@ -1,0 +1,103 @@
+<header class="api-head">
+  <p class="crumbs"><a href="/apis">APIs</a> / <a href="/apis/orders-events">orders-events</a> / Compare</p>
+  <h1>Compare versions <span class="badge">cloudevents</span></h1>
+</header>
+<form class="filters compare" action="/apis/orders-events/diff" method="get">
+  <label>From <select name="from">
+    <option >2.0.0</option><option selected>1.4.0</option>
+  </select></label>
+  <label>to <select name="to">
+    <option selected>2.0.0</option><option >1.4.0</option>
+  </select></label>
+  <input type="hidden" name="view" value="raw">
+  <button class="primary" type="submit">Compare</button>
+</form>
+<div id="diff-body">
+<p>
+  <a href="/apis/orders-events/versions/1.4.0">1.4.0</a> →
+  <a href="/apis/orders-events/versions/2.0.0">2.0.0</a>
+</p>
+<nav class="tabs" aria-label="Diff views" hx-target="#diff-body" hx-swap="outerHTML" hx-push-url="true">
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0" hx-get="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0" >Changes</a>
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0&amp;view=raw" hx-get="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0&amp;view=raw" aria-current="page">Raw diff</a>
+</nav>
+<div class="tab-panel">
+<nav class="subtabs" aria-label="Diff format" hx-target="#diff-body" hx-swap="outerHTML" hx-push-url="true">
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0&amp;view=raw" hx-get="/apis/orders-events/diff?from=1.4.0&amp;to=2.0.0&amp;view=raw" aria-current="page">Files as pushed</a>
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;mode=json&amp;to=2.0.0&amp;view=raw" hx-get="/apis/orders-events/diff?from=1.4.0&amp;mode=json&amp;to=2.0.0&amp;view=raw" >Canonical JSON</a>
+  <a href="/apis/orders-events/diff?from=1.4.0&amp;full=1&amp;to=2.0.0&amp;view=raw" hx-get="/apis/orders-events/diff?from=1.4.0&amp;full=1&amp;to=2.0.0&amp;view=raw">Show all lines</a>
+</nav>
+<ul class="plain file-list">
+  <li><a href="#file-0"><code>api/events.yaml</code></a>
+    <span class="ins-text">+3</span> <span class="del-text">−3</span></li>
+  <li><a href="#file-1"><code>api/schemas/order-created.v1.json</code></a>
+    <span class="ins-text">+1</span> <span class="del-text">−0</span></li>
+</ul>
+<section class="diff-file" id="file-0">
+  <h3><code>api/events.yaml</code> </h3>
+  <div class="diff-scroll">
+  <table class="diff">
+    <tbody>
+<tr class="equal"><td class="ln">1</td><td class="ln">1</td><td class="code">eventcatalog: &#34;1.0&#34;</td></tr>
+<tr class="equal"><td class="ln">2</td><td class="ln">2</td><td class="code">title: Order events</td></tr>
+<tr class="delete"><td class="ln">3</td><td class="ln"></td><td class="code">version: 1.4.0</td></tr>
+<tr class="insert"><td class="ln"></td><td class="ln">3</td><td class="code">version: 2.0.0</td></tr>
+<tr class="equal"><td class="ln">4</td><td class="ln">4</td><td class="code">description: Lifecycle events emitted by the orders service.</td></tr>
+<tr class="equal"><td class="ln">5</td><td class="ln">5</td><td class="code"></td></tr>
+<tr class="equal"><td class="ln">6</td><td class="ln">6</td><td class="code">defaults:</td></tr>
+</tbody>
+    <tbody class="fold"><tr><td colspan="3">
+      <a href="/apis/orders-events/diff?from=1.4.0&amp;full=1&amp;to=2.0.0&amp;view=raw#file-0" hx-get="/apis/orders-events/diff/lines?end=15&amp;file=api%2Fevents.yaml&amp;from=1.4.0&amp;start=7&amp;to=2.0.0" hx-target="closest tbody" hx-swap="outerHTML">Show 8 unchanged lines</a>
+    </td></tr></tbody>
+    <tbody>
+<tr class="equal"><td class="ln">15</td><td class="ln">15</td><td class="code">messages:</td></tr>
+<tr class="equal"><td class="ln">16</td><td class="ln">16</td><td class="code">  - type: com.acme.orders.order.created.v1</td></tr>
+<tr class="equal"><td class="ln">17</td><td class="ln">17</td><td class="code">    role: produces</td></tr>
+<tr class="delete"><td class="ln">18</td><td class="ln"></td><td class="code">    summary: An order was placed.</td></tr>
+<tr class="insert"><td class="ln"></td><td class="ln">18</td><td class="code">    summary: An order was placed and paid.</td></tr>
+<tr class="equal"><td class="ln">19</td><td class="ln">19</td><td class="code">    description: |</td></tr>
+<tr class="equal"><td class="ln">20</td><td class="ln">20</td><td class="code">      Emitted once, after the order is persisted and payment is authorised.</td></tr>
+<tr class="equal"><td class="ln">21</td><td class="ln">21</td><td class="code">    subject: orders/{orderId}</td></tr>
+</tbody>
+    <tbody class="fold"><tr><td colspan="3">
+      <a href="/apis/orders-events/diff?from=1.4.0&amp;full=1&amp;to=2.0.0&amp;view=raw#file-0" hx-get="/apis/orders-events/diff/lines?end=42&amp;file=api%2Fevents.yaml&amp;from=1.4.0&amp;start=23&amp;to=2.0.0" hx-target="closest tbody" hx-swap="outerHTML">Show 19 unchanged lines</a>
+    </td></tr></tbody>
+    <tbody>
+<tr class="equal"><td class="ln">41</td><td class="ln">41</td><td class="code">          orderId: { type: string }</td></tr>
+<tr class="equal"><td class="ln">42</td><td class="ln">42</td><td class="code">          reason: { enum: [customer_request, payment_failed, out_of_stock] }</td></tr>
+<tr class="equal"><td class="ln">43</td><td class="ln">43</td><td class="code"></td></tr>
+<tr class="delete"><td class="ln">44</td><td class="ln"></td><td class="code">  - type: com.acme.orders.order.cancel.requested.v1</td></tr>
+<tr class="insert"><td class="ln"></td><td class="ln">44</td><td class="code">  - type: com.acme.orders.order.cancel.requested.v2</td></tr>
+<tr class="equal"><td class="ln">45</td><td class="ln">45</td><td class="code">    role: receives</td></tr>
+<tr class="equal"><td class="ln">46</td><td class="ln">46</td><td class="code">    summary: Command to cancel an order.</td></tr>
+<tr class="equal"><td class="ln">47</td><td class="ln">47</td><td class="code">    dataschema: { $ref: ./schemas/order-cancel-requested.v1.json }</td></tr>
+<tr class="equal"><td class="ln">48</td><td class="ln">48</td><td class="code">    bindings:</td></tr>
+<tr class="equal"><td class="ln">49</td><td class="ln">49</td><td class="code">      - nats: { subject: orders.commands.cancel, stream: ORDERS_CMD }</td></tr>
+</tbody>
+  </table>
+  </div>
+</section>
+<section class="diff-file" id="file-1">
+  <h3><code>api/schemas/order-created.v1.json</code> </h3>
+  <div class="diff-scroll">
+  <table class="diff">
+    <tbody class="fold"><tr><td colspan="3">
+      <a href="/apis/orders-events/diff?from=1.4.0&amp;full=1&amp;to=2.0.0&amp;view=raw#file-1" hx-get="/apis/orders-events/diff/lines?end=5&amp;file=api%2Fschemas%2Forder-created.v1.json&amp;from=1.4.0&amp;start=0&amp;to=2.0.0" hx-target="closest tbody" hx-swap="outerHTML">Show 5 unchanged lines</a>
+    </td></tr></tbody>
+    <tbody>
+<tr class="equal"><td class="ln">6</td><td class="ln">6</td><td class="code">  &#34;properties&#34;: {</td></tr>
+<tr class="equal"><td class="ln">7</td><td class="ln">7</td><td class="code">    &#34;orderId&#34;: { &#34;type&#34;: &#34;string&#34; },</td></tr>
+<tr class="equal"><td class="ln">8</td><td class="ln">8</td><td class="code">    &#34;customerId&#34;: { &#34;type&#34;: &#34;string&#34; },</td></tr>
+<tr class="insert"><td class="ln"></td><td class="ln">9</td><td class="code">    &#34;channel&#34;: { &#34;type&#34;: &#34;string&#34;, &#34;description&#34;: &#34;Where the order was placed.&#34; },</td></tr>
+<tr class="equal"><td class="ln">9</td><td class="ln">10</td><td class="code">    &#34;total&#34;: { &#34;$ref&#34;: &#34;./money.json&#34; },</td></tr>
+<tr class="equal"><td class="ln">10</td><td class="ln">11</td><td class="code">    &#34;lines&#34;: {</td></tr>
+<tr class="equal"><td class="ln">11</td><td class="ln">12</td><td class="code">      &#34;type&#34;: &#34;array&#34;,</td></tr>
+</tbody>
+    <tbody class="fold"><tr><td colspan="3">
+      <a href="/apis/orders-events/diff?from=1.4.0&amp;full=1&amp;to=2.0.0&amp;view=raw#file-1" hx-get="/apis/orders-events/diff/lines?end=23&amp;file=api%2Fschemas%2Forder-created.v1.json&amp;from=1.4.0&amp;start=12&amp;to=2.0.0" hx-target="closest tbody" hx-swap="outerHTML">Show 11 unchanged lines</a>
+    </td></tr></tbody>
+  </table>
+  </div>
+</section>
+</div>
+</div>

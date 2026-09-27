@@ -1,0 +1,75 @@
+openapi: 3.1.0
+info:
+  title: Payments API
+  version: 1.2.0
+  description: Capture payments and issue refunds for orders.
+  contact: { name: team-payments, url: "https://chat.internal/channels/team-payments" }
+servers:
+  - url: https://payments.prod.internal
+    description: Production
+tags:
+  - name: refunds
+    description: Refunds of captured payments.
+security:
+  - bearerAuth: []
+paths:
+  /orders/{orderId}/refunds:
+    post:
+      operationId: createRefund
+      summary: Refund an order
+      description: Refunds part or all of an order's captured payment. Emits com.acme.payments.refund.issued.v1.
+      tags: [refunds]
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundRequest" }
+      responses:
+        "201":
+          description: The refund was issued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refund" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      description: Order identifier.
+      schema: { type: string, pattern: "^ord_[a-zA-Z0-9]+$", maxLength: 64 }
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    RefundRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount: { type: integer, format: int64, description: Minor units to refund. }
+        reason: { type: string, maxLength: 256 }
+    Refund:
+      type: object
+      description: A refund of an order's payment.
+      required: [refundId, orderId, amount, status]
+      properties:
+        refundId: { type: string, maxLength: 64 }
+        orderId: { type: string, maxLength: 64 }
+        amount: { type: integer, format: int64, description: Minor units. }
+        status: { type: string, enum: [pending, issued, failed] }
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string, maxLength: 256 }
+        status: { type: integer, format: int32 }
+        detail: { type: string, maxLength: 2048 }

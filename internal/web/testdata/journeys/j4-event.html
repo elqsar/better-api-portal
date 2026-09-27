@@ -1,0 +1,108 @@
+<header class="event-head">
+  <p class="crumbs"><a href="/apis">APIs</a> / events</p>
+  <h1><code>com.acme.orders.order.created.v1</code></h1>
+  <p class="muted">
+    Produced by
+    <a href="/apis/orders-events/versions/1.4.0">orders-events</a> 1.4.0, which owns the contract
+  </p>
+</header>
+<div class="columns">
+  <div class="main-col">
+    <p><strong>An order was placed.</strong></p>
+    <p class="prose">Emitted once, after the order is persisted and payment is authorised.
+</p>
+    <h2>Payload</h2>
+    <ul class="schema root"><li>
+<details open>
+  <summary>
+<span class="s-type">object</span>
+</summary>
+  <ul class="schema"><li>
+<div class="schema-leaf"><span class="s-name">customerId</span>
+<span class="s-type">string</span> <span class="s-req">required</span>
+</div>
+</li><li>
+<details open>
+  <summary><span class="s-name">lines</span>
+<span class="s-type">array</span>
+</summary>
+  <ul class="schema"><li>
+<details >
+  <summary><span class="s-label">items</span>
+<span class="s-type">object</span>
+</summary>
+  <ul class="schema"><li>
+<div class="schema-leaf"><span class="s-name">quantity</span>
+<span class="s-type">integer</span> <span class="s-req">required</span> <span class="s-fact">· ≥ 1</span>
+</div>
+</li><li>
+<div class="schema-leaf"><span class="s-name">sku</span>
+<span class="s-type">string</span> <span class="s-req">required</span>
+</div>
+</li></ul>
+</details>
+</li></ul>
+</details>
+</li><li>
+<div class="schema-leaf"><span class="s-name">orderId</span>
+<span class="s-type">string</span> <span class="s-req">required</span>
+</div>
+</li><li>
+<details open>
+  <summary><span class="s-name">total</span>
+<span class="s-type">object</span> <span class="s-req">required</span> <span class="s-fact" title="$ref">→ ./money.json</span>
+</summary>
+  <ul class="schema"><li>
+<div class="schema-leaf"><span class="s-name">amount</span>
+<span class="s-type">integer</span> <span class="s-req">required</span><div class="s-desc">Minor units, e.g. cents.</div>
+</div>
+</li><li>
+<div class="schema-leaf"><span class="s-name">currency</span>
+<span class="s-type">string</span> <span class="s-req">required</span> <span class="s-fact">· pattern: ^[A-Z]{3}$</span>
+</div>
+</li></ul>
+</details>
+</li></ul>
+</details>
+</li></ul>
+    <h2>Examples</h2>
+    <h3>minimal</h3>
+    <pre class="example">{
+  &#34;customerId&#34;: &#34;cus_9&#34;,
+  &#34;orderId&#34;: &#34;ord_123&#34;,
+  &#34;total&#34;: {
+    &#34;amount&#34;: 1999,
+    &#34;currency&#34;: &#34;EUR&#34;
+  }
+}</pre>
+    <h2>Carried on</h2>
+    <table>
+      <thead><tr><th>Protocol</th><th>Address</th><th>Settings</th><th>Brokers</th></tr></thead>
+      <tbody>
+      <tr>
+        <td>kafka</td>
+        <td><code>orders.events</code></td>
+        <td><div><span class="muted">key:</span> <code>{&#34;from&#34;:&#34;data&#34;,&#34;pointer&#34;:&#34;/orderId&#34;}</code></div><div><span class="muted">mode:</span> <code>binary</code></div></td>
+        <td><div><strong>staging</strong> kafka-staging</div><div><strong>prod</strong> <a href="https://kafka-ui.internal/prod" rel="noopener">kafka-prod</a></div></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>Consumed by</h2>
+    <ul class="plain"><li><a href="/apis/payments-events">payments-events</a></li><li><a href="/apis/payments-http">payments-http</a></li></ul>
+  </div>
+  <aside class="side-col">
+    <h3>CloudEvents attributes</h3>
+    <dl class="facts">
+      <dt>type</dt><dd><code>com.acme.orders.order.created.v1</code></dd>
+      <dt>source</dt><dd><code>/orders-service/{region}</code></dd>
+      <dt>subject</dt><dd><code>orders/{orderId}</code></dd>
+      <dt>datacontenttype</dt><dd><code>application/json</code></dd>
+    </dl>
+    <h3>Extensions</h3>
+    <dl class="facts">
+      <dt><code>partitionkey</code></dt>
+      <dd><span class="s-type">string</span> <span class="s-req">required</span>
+        <div class="muted">Equal to orderId.</div></dd>
+    </dl>
+  </aside>
+</div>

@@ -1,0 +1,60 @@
+<h1>Search</h1>
+<form class="filters" action="/search" method="get" role="search"
+      hx-get="/search" hx-target="#search-results" hx-swap="outerHTML" hx-push-url="true"
+      hx-trigger="submit, change, input changed delay:250ms from:input[name=q]">
+  <input type="search" name="q" value="refund" placeholder="Search operations, event types and schemas" aria-label="Search" autofocus>
+  <select name="kind" aria-label="Kind">
+    <option value="">Everything</option>
+    <option value="operation" >Operations</option><option value="message" >Event types</option><option value="schema" >Schemas</option><option value="api" >APIs</option>
+  </select>
+  <select name="team" aria-label="Team">
+    <option value="">All teams</option>
+    <option value="team-orders" >Orders</option><option value="team-payments" >Payments</option>
+  </select>
+  <button class="primary" type="submit">Search</button>
+</form>
+<div id="search-results">
+  <p class="muted">
+    6 results
+    in 2 APIs
+  </p>
+  <section class="result-group">
+    <h2>
+      <a href="/apis/payments-http/versions/1.2.0">payments-http</a>
+      <span class="badge">openapi</span> <span class="badge lc-production">production</span>
+      <span class="muted owner">Payments</span>
+    </h2>
+    <div class="muted">Payments API · Capture payments and issue <mark>refunds</mark> for orders. payments</div>
+    <ul class="results">
+      <li>
+        <span class="badge">operation</span> <a href="/apis/payments-http/versions/1.2.0/docs"><code>POST /orders/{orderId}/refunds</code></a>
+        <div class="snippet"><mark>Refund</mark> an order <mark>Refunds</mark> part or all of an order&#39;s captured</div>
+      </li>
+      <li>
+        <span class="badge">schema</span> <a href="/apis/payments-http/versions/1.2.0/docs"><code>api/openapi.yaml#/components/schemas/Refund</code></a>
+        <div class="snippet"><mark>refund</mark> of an order&#39;s payment. amount Minor units. orderId order</div>
+      </li>
+      <li>
+        <span class="badge">schema</span> <a href="/apis/payments-http/versions/1.2.0/docs"><code>api/openapi.yaml#/components/schemas/RefundRequest</code></a>
+        <div class="snippet">amount Minor units to <mark>refund</mark>. reason</div>
+      </li>
+    </ul>
+  </section>
+  <section class="result-group">
+    <h2>
+      <a href="/apis/payments-events/versions/1.0.0">payments-events</a>
+      <span class="badge">cloudevents</span> <span class="badge lc-production">production</span>
+      <span class="muted owner">Payments</span>
+    </h2>
+    <ul class="results">
+      <li>
+        <span class="badge">message</span> <a href="/events/com.acme.payments.refund.issued.v1"><code>com.acme.payments.refund.issued.v1</code></a>
+        <div class="snippet"><mark>refund</mark> was issued to the customer. Emitted once the <mark>refund</mark> is accepted</div>
+      </li>
+      <li>
+        <span class="badge">schema</span> <a href="/apis/payments-events/versions/1.0.0"><code>api/schemas/refund-issued.v1.json</code></a>
+        <div class="snippet">amount Minor units <mark>refunded</mark>. orderId order id refundId <mark>refund</mark> id RefundIssued</div>
+      </li>
+    </ul>
+  </section>
+</div>

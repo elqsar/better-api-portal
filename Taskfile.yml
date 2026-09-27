@@ -78,6 +78,13 @@ tasks:
     cmds:
       - go test -tags integration -count=1 ./internal/store/... ./internal/httpapi/... ./internal/web/... ./cmd/portal/... {{.CLI_ARGS}}
 
+  test:journeys:
+    desc: Run the J3–J5 acceptance tests; `task test:journeys -- -update` rewrites their golden HTML (start Postgres with task dev:db)
+    env:
+      PORTAL_TEST_DSN: '{{.DEV_DSN}}'
+    cmds:
+      - go test -tags integration -count=1 -run TestJourney ./internal/web/ {{.CLI_ARGS}}
+
   bench:search:
     desc: Benchmark search over 500 synthetic APIs, and log the query plan (start Postgres with task dev:db)
     env:

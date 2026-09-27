@@ -57,11 +57,13 @@
 <table>
   <tbody>
   {{range .Changes}}
+  {{/* A removed message type has no event page left. */}}
+  {{$gone := and (eq .Kind "removed") (eq .Target "message")}}
   <tr>
     <td class="nowrap">{{template "impact" .Impact}}</td>
     <td>{{.Message}}
       <div class="muted"><code>{{.RuleID}}</code>{{with .ID}} <code>{{.}}</code>{{end}}
-        {{with .Type}} · <a href="/events/{{.}}"><code>{{.}}</code></a>{{end}}{{with .Field}} · <code>{{.}}</code>{{end}}
+        {{with .Type}} · {{if $gone}}<code>{{.}}</code>{{else}}<a href="/events/{{.}}"><code>{{.}}</code></a>{{end}}{{end}}{{with .Field}} · <code>{{.}}</code>{{end}}
         {{with .File}} · {{.}}{{end}}{{if .Line}}:{{.Line}}{{end}}</div>
     </td>
   </tr>

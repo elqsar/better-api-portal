@@ -1,0 +1,27 @@
+# A second service for the J3–J5 acceptance tests (journeys_integration_test.go):
+# refunds for J3's search, and a consumer of orders-events for J4.
+apiVersion: portal/v1
+owner: team-payments
+system: commerce
+links:
+  - { title: "#team-payments", url: "https://chat.internal/channels/team-payments" }
+
+apis:
+  - id: payments-http
+    kind: openapi
+    spec: api/openapi.yaml
+    lifecycle: production
+    tags: [payments]
+    environments:
+      - { name: prod, url: "https://payments.prod.internal" }
+
+  - id: payments-events
+    kind: cloudevents
+    spec: api/events.yaml
+    lifecycle: production
+    environments:
+      - { name: prod, broker: kafka-prod }
+
+consumes:
+  - api: orders-events
+    types: [com.acme.orders.order.created.v1]

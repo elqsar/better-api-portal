@@ -1,0 +1,31 @@
+eventcatalog: "1.0"
+title: Payment events
+version: 1.0.0
+description: Events emitted by the payments service.
+
+defaults:
+  source: /payments-service
+  datacontenttype: application/json
+  bindings:
+    - kafka:
+        topic: payments.events
+        key: { from: data, pointer: /orderId }
+        mode: binary
+
+messages:
+  - type: com.acme.payments.payment.captured.v1
+    role: produces
+    summary: A payment was captured for an order.
+    subject: orders/{orderId}
+    dataschema: { $ref: ./schemas/payment-captured.v1.json }
+
+  - type: com.acme.payments.refund.issued.v1
+    role: produces
+    summary: A refund was issued to the customer.
+    description: |
+      Emitted once the refund is accepted by the payment provider.
+    subject: orders/{orderId}
+    dataschema: { $ref: ./schemas/refund-issued.v1.json }
+    examples:
+      - name: partial
+        data: { refundId: rf_1, orderId: ord_123, amount: 500 }
