@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27 · Last commit: `c09b395`
+Last updated: 2026-09-27 · Last commit: `bb50c06`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,8 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–6 (the index, the web
-skeleton with OIDC sign-in, the API list and pages, Scalar docs, the event page, search) are done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–7 (the index, the web
+skeleton with OIDC sign-in, the API list and pages, Scalar docs, the event page, search, the diff page) are done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -47,6 +47,7 @@ specs are available yet.
 | 20 | `6f180f2` | Docs tab: Scalar (vendored, offline) over a server-resolved single OpenAPI document |
 | 21 | `7ebca18` | Event page `/events/{type}`: CE attributes, payload schema tree, examples, bindings with broker links, owner and consumers; `brokers` config, `descriptor-broker-unknown` |
 | 22 | `c09b395` | Search `/search`: full text + title trigrams, grouped by API, deprecated ranked lower, retired hidden; top-bar box; 500-API latency test, `task bench:search` |
+| 23 | `bb50c06` | Diff page `/apis/{id}/diff`: contract changes between any two versions (`check.DiffBundles`), raw per-file diff as pushed or canonical JSON, folds expanded by htmx; compare form on the versions tab |
 
 ### J1/J2 against a portal
 ```sh
@@ -80,7 +81,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | Package | Role |
 |---|---|
 | `cmd/portal` | cobra CLI: `check`, `diff`, `bundle`, `push`, `migrate`, `reindex`, `serve`, `admin token` |
-| `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles |
+| `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles; `DiffBundles` compares two stored versions |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
 | `internal/bundle` | `$ref` file closure (remote refs, escapes and missing files are problems); `RelTo`; `Bundle`: `Hash`, `Pack`/`Unpack` tar.zst |
@@ -95,6 +96,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL), CI issuers, OIDC, admins, `brokers` |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
 | `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; `web/devoidc` is the `--dev-login` stub provider |
+| `internal/textdiff` | Line diff per file (go-udiff's `lcs`), both sides' line numbers, `Fold` for unchanged runs |
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
@@ -446,9 +448,43 @@ be changed in M3's first commit to match.
     `-short`) fails at p95 ≥ 300 ms and logs the plan.
   - Not done: `GET /api/v1/search` and the older-versions filter (see
     "Known gaps").
+- **Diff page (step 7, done):**
+  - `/apis/{id}/diff?from=&to=&view=changes|raw&mode=yaml|json&full=1`.
+    `to` defaults to the latest, `from` to the published version below
+    `to` by semver. Any two published versions can be compared, either
+    way round (a note says when `from` is the later one). One version,
+    the same content, or a `to` with nothing below it gives a message,
+    not an error; an unknown version is a 404.
+  - **Changes** come from `check.DiffBundles`: both bundles are unpacked
+    side by side and go through the same `diff.Events` / `diff.OpenAPI`
+    as a baseline check (`DiffFiles` now shares `diffSpecs`, which takes
+    each side's root, so `$ref`s outside the entry's directory resolve).
+    The API's current `compatibility` applies. Sorted breaking, warn,
+    additive, docs. These are recomputed, so they can differ from the
+    push's stored report if the rules changed since; the lint tab keeps
+    showing the stored one.
+  - **Raw diff** (`internal/textdiff`): go-udiff's `lcs.DiffLines` (gopls'
+    algorithm), not the "hexops/gotextdiff" the plan named: that one is
+    archived, and go-udiff was already in the module graph (unlinked); it
+    adds 0.1 MB. Per file, unchanged files left out, added/removed files
+    marked. "Canonical JSON" is each file as the content hash sees it
+    (sorted keys, no comments), indented. A missing final newline isn't a
+    change.
+  - Folding: unchanged runs keep 3 lines of context and fold only if that
+    hides more than 2 lines. A fold is its own `<tbody>`; htmx fetches
+    `/apis/{id}/diff/lines?from&to&mode&file&start&end` (indices into the
+    file's lines) and swaps it, cached `immutable`. Without JS the link
+    is the page with `full=1`.
+  - Everything for a pair (changes, both raw forms) is computed once and
+    cached in memory by the two content hashes and the compatibility mode
+    (`cache[*versionDiff]`, 32 entries).
+  - Signs are drawn with CSS `::before`, so copying lines copies only
+    their text.
+  - Linked from the versions tab (a compare form, and each "from X" in
+    the Changes column) and the lint tab ("Compare the files").
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
   skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page (done);
-  (6) search with a 500-API benchmark (done); (7) diff page; (8) J3–J5 acceptance
+  (6) search with a 500-API benchmark (done); (7) diff page (done); (8) J3–J5 acceptance
   tests with golden HTML.
 
 ## Decisions (store)
@@ -494,10 +530,10 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–6
-are done. Next is step 7: the diff page (`/apis/{id}/diff?from=&to=`),
-server-side Myers diff per file with a canonical-JSON toggle, folded
-unchanged regions, cacheable by the two content hashes.
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–7
+are done. Next is step 8: J3–J5 acceptance tests with golden HTML (find an
+API, understand an event, compare versions), which closes M3's "done
+when" apart from tuning against real specs (M5).
 
 Then, while the rows are fresh: the server rules `ce-type-unique` and
 `ce-topic-single-owner` in the push verdict, next to `consumes-unknown-api`
@@ -529,6 +565,10 @@ task and a Containerfile, so the example workflow stops needing
   only; it comes with session reads there or the MCP server), and no
   filter for older versions. After an htmx search the page `<title>` keeps
   the first query.
+- **Diff page:** no `GET /api/v1/apis/{id}/diff` yet (same reason as
+  search). Very large files aren't capped: a 5 000-line spec renders
+  every changed region, which is fine, but a rewritten file shows in
+  full.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented yet: `ce-type-unique` and
   `ce-topic-single-owner`. The rows they need (`messages`, `bindings`) exist
