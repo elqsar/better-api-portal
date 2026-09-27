@@ -2,6 +2,7 @@ package check
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 
 	"better-api-portal/internal/bundle"
 	"better-api-portal/internal/descriptor"
+	"better-api-portal/internal/model"
 )
 
 // upload reads the descriptor at descPath and bundles its APIs, as
@@ -192,5 +194,45 @@ func TestParseBundle(t *testing.T) {
 	bad := &bundle.Bundle{Entry: "api/x.yaml", Files: map[string][]byte{"api/x.yaml": []byte("hello: world\n")}}
 	if _, err := ParseBundle(bad); err == nil {
 		t.Error("expected an error for a spec of no known kind")
+	}
+}
+
+func TestDiffBundles(t *testing.T) {
+	_, bundles := upload(t, example+"/portal.yaml")
+	old := bundles["orders-events"]
+	// Removing a produced type is breaking.
+	edited := &bundle.Bundle{Entry: old.Entry, Files: maps.Clone(old.Files)}
+	src := string(edited.Files[old.Entry])
+	i := strings.Index(src, "  - type: com.acme.orders.order.cancelled.v1")
+	j := strings.Index(src, "  - type: com.acme.orders.order.cancel.requested.v1")
+	if i < 0 || j < i {
+		t.Fatal("example changed; update the test")
+	}
+	edited.Files[old.Entry] = []byte(src[:i] + src[j:])
+
+	changes, err := DiffBundles(old, edited, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, c := range changes {
+		if strings.Contains(c.File, "portal-diff-") || strings.Contains(c.Message, "portal-diff-") {
+			t.Errorf("temporary path left in %+v", c)
+		}
+		if c.Type == "com.acme.orders.order.cancelled.v1" && c.Impact == model.ImpactBreaking {
+			found = true
+			if c.File != "api/events.yaml" {
+				t.Errorf("file %q, want the bundle's own path", c.File)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no breaking change for the removed type in %+v", changes)
+	}
+	if same, err := DiffBundles(old, old, ""); err != nil || len(same) != 0 {
+		t.Errorf("same bundle: %+v, %v", same, err)
+	}
+	if _, err := DiffBundles(old, bundles["orders-http"], ""); err == nil || strings.Contains(err.Error(), "portal-diff-") {
+		t.Errorf("different kinds: %v", err)
 	}
 }

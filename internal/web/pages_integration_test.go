@@ -4,6 +4,7 @@ package web
 
 import (
 	"context"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -414,4 +415,87 @@ func TestSearchPage(t *testing.T) {
 	// Other pages get a search box in the top bar.
 	_, body, _ = s.get(c, "/apis")
 	contains(t, "/apis", body, `class="topbar-search" action="/search"`)
+}
+
+func TestDiffPage(t *testing.T) {
+	s := newSite(t)
+	s.push()
+	// A docs change, plus a comment the contract and canonical JSON don't see.
+	st := s.push(
+		[3]string{"api/events.yaml", "version: 1.4.0", "version: 1.5.0"},
+		[3]string{"api/events.yaml", "summary: An order was placed.", "summary: An order was placed by a customer. # reworded"})
+	if st["orders-events"] != "published" {
+		t.Fatalf("statuses %v", st)
+	}
+	c := s.browser()
+
+	code, body, _ := s.get(c, "/apis/orders-events/diff")
+	if code != 200 {
+		t.Fatalf("status %d:\n%s", code, body)
+	}
+	contains(t, "changes", body,
+		`<a href="/apis/orders-events/versions/1.4.0">1.4.0</a> →`, `<a href="/apis/orders-events/versions/1.5.0">1.5.0</a>`,
+		`<option selected>1.4.0</option>`, `<span class="badge impact-docs">docs</span>`, "1 docs only",
+		`href="/events/com.acme.orders.order.created.v1"`, `aria-current="page">Changes</a>`)
+
+	_, body, _ = s.get(c, "/apis/orders-events/diff?from=1.4.0&to=1.5.0&view=raw")
+	contains(t, "raw", body,
+		`<a href="#file-0"><code>api/events.yaml</code></a>`, `<span class="ins-text">+2</span> <span class="del-text">−2</span>`, // the version and the summary,
+		`<tr class="delete"><td class="ln">18</td><td class="ln"></td><td class="code">    summary: An order was placed.</td></tr>`,
+		`<tr class="insert"><td class="ln"></td><td class="ln">18</td><td class="code">    summary: An order was placed by a customer. # reworded</td></tr>`,
+		`<tbody class="fold">`, `>Show all lines</a>`)
+	if strings.Contains(body, "order-created.v1.json") {
+		t.Error("an unchanged file is listed")
+	}
+
+	// A fold expands with htmx, or with the full-context link.
+	m := regexp.MustCompile(`hx-get="(/apis/orders-events/diff/lines\?[^"]+)"`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatal("no fold link")
+	}
+	code, rows, h := s.get(c, html.UnescapeString(m[1]), "HX-Request", "true")
+	if code != 200 || !strings.HasPrefix(rows, "<tbody>") || !strings.Contains(rows, `<tr class="equal"><td class="ln">7</td><td class="ln">7</td><td class="code">  source: /orders-service/{region}</td></tr>`) ||
+		strings.Contains(rows, `class="insert"`) || strings.Contains(rows, `class="delete"`) ||
+		!strings.Contains(h.Get("Cache-Control"), "immutable") {
+		t.Errorf("fold: %d %q:\n%s", code, h.Get("Cache-Control"), rows)
+	}
+	if code, _, _ := s.get(c, "/apis/orders-events/diff/lines?from=1.4.0&to=1.5.0&file=api/events.yaml&start=5&end=9999"); code != 404 {
+		t.Errorf("out of range fold: %d", code)
+	}
+	if _, body, _ := s.get(c, "/apis/orders-events/diff?from=1.4.0&to=1.5.0&view=raw&full=1"); strings.Contains(body, `class="fold"`) || !strings.Contains(body, ">Fold unchanged lines</a>") {
+		t.Errorf("full context:\n%s", body)
+	}
+
+	// Canonical JSON: the comment is gone, the summary change stays.
+	_, body, _ = s.get(c, "/apis/orders-events/diff?from=1.4.0&to=1.5.0&view=raw&mode=json")
+	contains(t, "json", body, `&#34;summary&#34;: &#34;An order was placed by a customer.&#34;,`)
+	if strings.Contains(body, "reworded") {
+		t.Error("the comment is in the canonical diff")
+	}
+
+	// htmx swaps the body and pushes a clean URL.
+	code, body, h = s.get(c, "/apis/orders-events/diff?from=1.4.0&to=1.5.0&view=raw&mode=", "HX-Request", "true")
+	if code != 200 || !strings.HasPrefix(strings.TrimSpace(body), `<div id="diff-body">`) ||
+		h.Get("HX-Push-Url") != "/apis/orders-events/diff?from=1.4.0&to=1.5.0&view=raw" {
+		t.Errorf("htmx: %d %q:\n%s", code, h.Get("HX-Push-Url"), body)
+	}
+
+	_, body, _ = s.get(c, "/apis/orders-events/diff?from=1.5.0&to=1.4.0")
+	contains(t, "backwards", body, "from the later version to the earlier one")
+	_, body, _ = s.get(c, "/apis/orders-events/diff?from=1.4.0&to=1.4.0")
+	contains(t, "same", body, "Both versions have the same content.")
+	_, body, _ = s.get(c, "/apis/orders-events/diff?to=1.4.0")
+	contains(t, "first", body, "1.4.0 is the first published version")
+	_, body, _ = s.get(c, "/apis/orders-http/diff")
+	contains(t, "one version", body, "Only one version is published")
+	if code, _, _ := s.get(c, "/apis/orders-events/diff?from=0.9.0&to=1.5.0"); code != 404 {
+		t.Errorf("unknown version: %d", code)
+	}
+
+	// The versions tab and the lint tab link here.
+	_, body, _ = s.get(c, "/apis/orders-events/versions")
+	contains(t, "versions tab", body, `action="/apis/orders-events/diff"`,
+		`<a href="/apis/orders-events/diff?from=1.4.0&amp;to=1.5.0">from 1.4.0</a>`)
+	_, body, _ = s.get(c, "/apis/orders-events/versions/1.5.0/lint")
+	contains(t, "lint tab", body, `href="/apis/orders-events/diff?from=1.4.0&amp;to=1.5.0">Compare the files</a>`)
 }

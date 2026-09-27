@@ -177,7 +177,7 @@ Nothing company-specific lives in code. This file is the whole customisation sur
 - **Progressive:** every page works without JavaScript; htmx only swaps tabs, filters and search results. One hand-written CSS file (dark mode via `prefers-color-scheme`). Strict CSP (`script-src 'self'`).
 - **OpenAPI reference docs:** the **Scalar** API reference web component, loaded from embedded static files and fed one server-bundled document (`/apis/{id}/versions/{v}/openapi.json`, external `$ref`s resolved), cached by content hash.
 - **Events:** our own templates. They show CE attributes, bindings (linked to the broker UI from config), a JSON Schema tree (collapsible, server-rendered), examples, and producer/consumers.
-- **Diff view:** a structured list plus a raw text diff computed on the server (a pure-Go Myers diff) and rendered as HTML: per file of the original YAML by default, canonical JSON as a "semantic" option, unchanged regions folded. Both sides are content hashes, so it can be cached forever.
+- **Diff view:** a structured list plus a raw text diff computed on the server (a pure-Go line diff, gopls' LCS algorithm via `go-udiff`) and rendered as HTML: per file of the original YAML by default, canonical JSON as a "semantic" option, unchanged regions folded. Both sides are content hashes, so it can be cached forever.
 - Pages: Home/search (`/`, `/search`) · API list (`/apis`, filter by team, kind, lifecycle, tag) · API page (`/apis/{id}/versions/{v}`, the URL `push` prints; tabs: overview, docs, versions, lint, dependencies) · Message page (`/events/{type}`, across APIs) · Diff page (`/apis/{id}/diff?from=&to=`) · Team page · Admin.
 
 ## Portal's own REST API

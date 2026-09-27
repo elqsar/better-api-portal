@@ -210,6 +210,27 @@ body {
   .snippet { color: var(--muted); font-size: 0.9em; }
   mark { background: color-mix(in srgb, var(--warn) 28%, transparent); color: inherit; border-radius: 2px; padding: 0 0.1em; }
   .more { font-size: 0.9em; }
+
+  /* Diff page */
+  .compare label { display: flex; align-items: center; gap: 0.4rem; }
+  .subtabs { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0 0 1rem; font-size: 0.9em; }
+  .subtabs a[aria-current="page"] { color: var(--text); font-weight: 500; }
+  .ins-text { color: var(--ok); }
+  .del-text { color: var(--err); }
+  .file-list li { font-size: 0.9em; }
+  .diff-file { margin: 0 0 1.5rem; }
+  .diff-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  table.diff { border: 0; border-radius: 0; font-family: var(--mono); font-size: 0.82em; line-height: 1.45; }
+  table.diff td { padding: 0 0.5rem; border: 0; }
+  table.diff td.ln { width: 1%; color: var(--muted); text-align: right; white-space: nowrap; user-select: none; }
+  table.diff td.code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* The sign is drawn, so copying a line copies only its text. */
+  table.diff td.code::before { content: " "; display: inline-block; width: 1.5ch; color: var(--muted); }
+  table.diff tr.insert { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  table.diff tr.insert td.code::before { content: "+"; }
+  table.diff tr.delete { background: color-mix(in srgb, var(--err) 14%, transparent); }
+  table.diff tr.delete td.code::before { content: "−"; }
+  table.diff tbody.fold td { background: var(--code-bg); padding: 0.15rem 0.75rem; font-family: system-ui, sans-serif; }
 }
 
 }

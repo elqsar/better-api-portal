@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"better-api-portal/internal/bundle"
+	"better-api-portal/internal/compat"
 	"better-api-portal/internal/descriptor"
 	"better-api-portal/internal/model"
 	"better-api-portal/internal/spec/eventcatalog"
@@ -266,4 +267,41 @@ func ParseBundle(b *bundle.Bundle) (*model.Spec, error) {
 		return nil, fmt.Errorf("%s: %s", b.Entry, msg)
 	}
 	return spec, nil
+}
+
+// DiffBundles compares the contracts of two versions' bundles, as a
+// baseline diff does. File paths in the changes are the bundles' own.
+func DiffBundles(old, new *bundle.Bundle, mode compat.Mode) ([]model.Change, error) {
+	tmp, err := os.MkdirTemp("", "portal-diff-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	var roots, entries [2]string
+	for i, b := range []*bundle.Bundle{old, new} {
+		roots[i] = filepath.Join(tmp, []string{"old", "new"}[i])
+		if err := b.WriteDir(roots[i]); err != nil {
+			return nil, err
+		}
+		entries[i] = filepath.Join(roots[i], filepath.FromSlash(b.Entry))
+	}
+	rel := func(s string) string {
+		for _, r := range roots {
+			s = strings.ReplaceAll(s, r+string(filepath.Separator), "")
+		}
+		return filepath.ToSlash(s)
+	}
+	changes, findings, err := diffSpecs(roots, entries, mode)
+	if err != nil {
+		return nil, fmt.Errorf("%s", rel(err.Error()))
+	}
+	for _, f := range findings {
+		if f.Severity == model.SeverityError {
+			return nil, fmt.Errorf("%s:%d: %s", rel(f.File), f.Line, rel(f.Message))
+		}
+	}
+	for i := range changes {
+		changes[i].File, changes[i].Message = rel(changes[i].File), rel(changes[i].Message)
+	}
+	return changes, nil
 }

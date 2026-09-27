@@ -474,7 +474,12 @@ func failOnErrors(what string, fs []model.Finding) error {
 // directory. Findings are returned instead of changes when either file can't
 // be parsed.
 func DiffFiles(oldPath, newPath string, mode compat.Mode) ([]model.Change, []model.Finding, error) {
-	paths := [2]string{oldPath, newPath}
+	return diffSpecs([2]string{filepath.Dir(oldPath), filepath.Dir(newPath)}, [2]string{oldPath, newPath}, mode)
+}
+
+// diffSpecs compares two spec files, each loaded within its root.
+func diffSpecs(roots, paths [2]string, mode compat.Mode) ([]model.Change, []model.Finding, error) {
+	oldPath, newPath := paths[0], paths[1]
 	var kinds [2]descriptor.Kind
 	var findings []model.Finding
 	for i, p := range paths {
@@ -501,7 +506,7 @@ func DiffFiles(oldPath, newPath string, mode compat.Mode) ([]model.Change, []mod
 	if kinds[0] == descriptor.KindOpenAPI {
 		var results [2]*openapi.Result
 		for i, p := range paths {
-			res, fs, err := openapi.Parse(filepath.Dir(p), p)
+			res, fs, err := openapi.Parse(roots[i], p)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -516,7 +521,7 @@ func DiffFiles(oldPath, newPath string, mode compat.Mode) ([]model.Change, []mod
 	}
 	var results [2]*eventcatalog.Result
 	for i, p := range paths {
-		res, fs, err := eventcatalog.Parse(filepath.Dir(p), p)
+		res, fs, err := eventcatalog.Parse(roots[i], p)
 		if err != nil {
 			return nil, nil, err
 		}

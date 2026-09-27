@@ -1,0 +1,120 @@
+{{define "content"}}
+{{$d := .Data}}{{$a := $d.API}}
+<header class="api-head">
+  <p class="crumbs"><a href="/apis">APIs</a> / <a href="/apis/{{$a.ID}}">{{$a.ID}}</a> / Compare</p>
+  <h1>Compare versions {{template "kind" $a.Kind}}</h1>
+</header>
+{{if ge (len $d.Versions) 2}}
+<form class="filters compare" action="/apis/{{$a.ID}}/diff" method="get">
+  <label>From <select name="from">
+    {{range $d.Versions}}<option {{if and $d.From (eq . $d.From.Semver)}}selected{{end}}>{{.}}</option>{{end}}
+  </select></label>
+  <label>to <select name="to">
+    {{range $d.Versions}}<option {{if and $d.To (eq . $d.To.Semver)}}selected{{end}}>{{.}}</option>{{end}}
+  </select></label>
+  {{if eq $d.View "raw"}}<input type="hidden" name="view" value="raw">{{if eq $d.Mode "json"}}<input type="hidden" name="mode" value="json">{{end}}{{end}}
+  <button class="primary" type="submit">Compare</button>
+</form>
+{{end}}
+{{template "diff-body" .}}
+{{end}}
+
+{{define "diff-body"}}
+{{$d := .Data}}
+<div id="diff-body">
+{{with $d.Empty}}
+<p class="muted">{{.}}</p>
+{{else}}
+<p>
+  <a href="/apis/{{$d.API.ID}}/versions/{{$d.From.Semver}}">{{$d.From.Semver}}</a> →
+  <a href="/apis/{{$d.API.ID}}/versions/{{$d.To.Semver}}">{{$d.To.Semver}}</a>
+  {{if $d.Backwards}}<span class="muted">(from the later version to the earlier one)</span>{{end}}
+</p>
+<nav class="tabs" aria-label="Diff views" hx-target="#diff-body" hx-swap="outerHTML" hx-push-url="true">
+  {{$u := diffURL $d "view" "changes"}}<a href="{{$u}}" hx-get="{{$u}}" {{if eq $d.View "changes"}}aria-current="page"{{end}}>Changes</a>
+  {{$u = diffURL $d "view" "raw"}}<a href="{{$u}}" hx-get="{{$u}}" {{if eq $d.View "raw"}}aria-current="page"{{end}}>Raw diff</a>
+</nav>
+<div class="tab-panel">
+{{if eq $d.View "raw"}}{{template "diff-raw" .}}{{else}}{{template "diff-changes" .}}{{end}}
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{define "diff-changes"}}
+{{$d := .Data}}
+{{with $d.Diff}}
+{{if .ChangesErr}}
+<div class="banner err" role="status">The contracts can't be compared: {{.ChangesErr}}</div>
+{{else if .Changes}}
+<p>
+  {{with index $d.Counts "breaking"}}<strong class="sev-text-error">{{.}} breaking</strong> ·{{end}}
+  {{with index $d.Counts "warn"}}{{.}} to check ·{{end}}
+  {{with index $d.Counts "additive"}}{{.}} additive ·{{end}}
+  {{with index $d.Counts "docs"}}{{.}} docs only ·{{end}}
+  {{len .Changes}} change{{if ne (len .Changes) 1}}s{{end}} to the contract
+</p>
+<table>
+  <tbody>
+  {{range .Changes}}
+  <tr>
+    <td class="nowrap">{{template "impact" .Impact}}</td>
+    <td>{{.Message}}
+      <div class="muted"><code>{{.RuleID}}</code>{{with .ID}} <code>{{.}}</code>{{end}}
+        {{with .Type}} · <a href="/events/{{.}}"><code>{{.}}</code></a>{{end}}{{with .Field}} · <code>{{.}}</code>{{end}}
+        {{with .File}} · {{.}}{{end}}{{if .Line}}:{{.Line}}{{end}}</div>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="muted">No changes to the contract.{{if .YAML}} The files differ in ways the contract doesn't see; the raw diff shows them.{{end}}</p>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "diff-raw"}}
+{{$d := .Data}}
+<nav class="subtabs" aria-label="Diff format" hx-target="#diff-body" hx-swap="outerHTML" hx-push-url="true">
+  {{$u := diffURL $d "mode" "yaml"}}<a href="{{$u}}" hx-get="{{$u}}" {{if eq $d.Mode "yaml"}}aria-current="page"{{end}}>Files as pushed</a>
+  {{$u = diffURL $d "mode" "json"}}<a href="{{$u}}" hx-get="{{$u}}" {{if eq $d.Mode "json"}}aria-current="page"{{end}}>Canonical JSON</a>
+  {{if $d.Full}}{{$u = diffURL $d "full" ""}}<a href="{{$u}}" hx-get="{{$u}}">Fold unchanged lines</a>
+  {{else}}{{$u = diffURL $d "full" "1"}}<a href="{{$u}}" hx-get="{{$u}}">Show all lines</a>{{end}}
+</nav>
+{{if and (eq $d.Mode "json") $d.Diff.JSONErr}}
+<div class="banner err" role="status">The files can't be shown as canonical JSON: {{$d.Diff.JSONErr}}</div>
+{{else if $d.Files}}
+<ul class="plain file-list">
+  {{range $i, $f := $d.Files}}
+  <li><a href="#file-{{$i}}"><code>{{.Path}}</code></a> {{if ne .Status "modified"}}<span class="badge">{{.Status}}</span>{{end}}
+    <span class="ins-text">+{{.Added}}</span> <span class="del-text">−{{.Removed}}</span></li>
+  {{end}}
+</ul>
+{{range $i, $f := $d.Files}}
+<section class="diff-file" id="file-{{$i}}">
+  <h3><code>{{.Path}}</code> {{if ne .Status "modified"}}<span class="badge">{{.Status}}</span>{{end}}</h3>
+  <div class="diff-scroll">
+  <table class="diff">
+    {{range .Blocks}}
+    {{if .Folded}}
+    <tbody class="fold"><tr><td colspan="3">
+      <a href="{{diffURL $d "full" "1"}}#file-{{$i}}" hx-get="{{foldURL $d $f.Path .}}" hx-target="closest tbody" hx-swap="outerHTML">Show {{len .Lines}} unchanged lines</a>
+    </td></tr></tbody>
+    {{else}}{{template "diff-rows" .}}{{end}}
+    {{end}}
+  </table>
+  </div>
+</section>
+{{end}}
+{{else}}
+<p class="muted">No file differs{{if eq $d.Mode "json"}} in canonical form: only formatting, comments or key order changed{{end}}.</p>
+{{end}}
+{{end}}
+
+{{/* diff-rows is a Block's lines; diff-lines is the fragment htmx fetches. */}}
+{{define "diff-rows"}}<tbody>
+{{range .Lines}}<tr class="{{.Op}}"><td class="ln">{{lineNo .Old}}</td><td class="ln">{{lineNo .New}}</td><td class="code">{{.Text}}</td></tr>
+{{end}}</tbody>{{end}}
+
+{{define "diff-lines"}}{{template "diff-rows" .Data}}{{end}}

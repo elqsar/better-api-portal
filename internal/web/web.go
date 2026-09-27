@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -79,8 +80,9 @@ type Server struct {
 	mu       sync.Mutex
 	provider *oidcProvider
 
-	docs  cache[[]byte]      // resolved OpenAPI documents
-	specs cache[*model.Spec] // bundles parsed with their schemas, for event pages
+	docs  cache[[]byte]       // resolved OpenAPI documents
+	specs cache[*model.Spec]  // bundles parsed with their schemas, for event pages
+	diffs cache[*versionDiff] // by the two content hashes and the compatibility mode
 }
 
 type staticFile struct {
@@ -145,6 +147,15 @@ func New(o Options) (*Server, error) {
 			}
 			return s
 		},
+		"diffURL": diffURL,
+		"foldURL": foldURL,
+		// lineNo is a diff line number, blank on the side the line isn't on.
+		"lineNo": func(n int) string {
+			if n == 0 {
+				return ""
+			}
+			return strconv.Itoa(n)
+		},
 		"static": func(name string) (string, error) {
 			f, ok := s.static[name]
 			if !ok {
@@ -192,6 +203,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /apis", s.authed(s.apiList))
 	mux.Handle("GET /apis/{id}", s.authed(s.apiLatest))
 	mux.Handle("GET /apis/{id}/versions", s.authed(s.apiVersions))
+	mux.Handle("GET /apis/{id}/diff", s.authed(s.apiDiff))
+	mux.Handle("GET /apis/{id}/diff/lines", s.authed(s.diffLines))
 	mux.Handle("GET /apis/{id}/versions/{version}", s.authed(s.apiOverview))
 	mux.Handle("GET /apis/{id}/versions/{version}/lint", s.authed(s.apiLint))
 	mux.Handle("GET /apis/{id}/versions/{version}/docs", s.authed(s.apiDocs))

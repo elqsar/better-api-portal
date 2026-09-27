@@ -84,6 +84,7 @@ type apiData struct {
 	Consumes  []store.Dependency
 	Consumers []store.Dependency
 	Versions  []store.VersionSummary
+	Published []string // highest first, for the compare form
 	// Findings by severity, for the lint tab.
 	Errors, Warnings, Infos int
 }
@@ -186,6 +187,7 @@ func (s *Server) apiVersions(w http.ResponseWriter, r *http.Request, u *User) {
 			d.Versions = append(d.Versions, v)
 		}
 	}
+	d.Published = published(vs)
 	s.renderAPI(w, r, u, d)
 }
 

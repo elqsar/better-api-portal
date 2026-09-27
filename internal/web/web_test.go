@@ -321,7 +321,7 @@ func TestParallelSignIns(t *testing.T) {
 
 func TestHighlight(t *testing.T) {
 	for in, want := range map[string]template.HTML{
-		"a \x01<b>\x02 & c":  "a <mark>&lt;b&gt;</mark> &amp; c",
+		"a \x01<b>\x02 & c":   "a <mark>&lt;b&gt;</mark> &amp; c",
 		"\x01one\x02 \x01two": "<mark>one</mark> <mark>two</mark>", // closed at the end
 		"stray \x02 stop":     "stray  stop",
 		"":                    "",
@@ -336,7 +336,7 @@ func TestTidy(t *testing.T) {
 	for in, want := range map[string]string{
 		"status  status placed \x01cancelled\x02 cancelled": "status placed \x01cancelled\x02",
 		"cancelled \x01cancelled\x02 Orders orders":         "\x01cancelled\x02 Orders",
-		"a b a":                                              "a b a",
+		"a b a": "a b a",
 	} {
 		if got := tidy(in); got != want {
 			t.Errorf("tidy(%q) = %q, want %q", in, got, want)

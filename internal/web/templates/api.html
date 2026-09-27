@@ -154,7 +154,8 @@
 
 <h2>Changes</h2>
 {{if $r.BaselineVersion}}
-<p>Compared with <a href="/apis/{{.Data.API.ID}}/versions/{{$r.BaselineVersion}}">{{$r.BaselineVersion}}</a>{{if not $r.Changes}}: no changes to the contract.{{else}}:{{end}}</p>
+<p>Compared with <a href="/apis/{{.Data.API.ID}}/versions/{{$r.BaselineVersion}}">{{$r.BaselineVersion}}</a>{{if not $r.Changes}}: no changes to the contract.{{else}}:{{end}}
+  <a href="/apis/{{.Data.API.ID}}/diff?from={{$r.BaselineVersion}}&amp;to={{.Data.Version.Semver}}">Compare the files</a></p>
 {{with $r.Changes}}
 <table>
   <tbody>
@@ -175,6 +176,17 @@
 
 {{define "tab-versions"}}
 {{$a := .Data.API}}
+{{with .Data.Published}}{{if ge (len .) 2}}
+<form class="filters compare" action="/apis/{{$a.ID}}/diff" method="get">
+  <label>Compare <select name="from">
+    {{range $i, $v := .}}<option {{if eq $i 1}}selected{{end}}>{{$v}}</option>{{end}}
+  </select></label>
+  <label>with <select name="to">
+    {{range $i, $v := .}}<option {{if eq $i 0}}selected{{end}}>{{$v}}</option>{{end}}
+  </select></label>
+  <button class="primary" type="submit">Compare</button>
+</form>
+{{end}}{{end}}
 {{if .Data.Versions}}
 <table>
   <thead><tr><th>Version</th><th>Pushed</th><th class="num">Score</th><th>Findings</th><th>Changes</th><th>Commit</th></tr></thead>
@@ -189,7 +201,7 @@
     <td>{{date .CreatedAt}}</td>
     <td class="num">{{.Score}}</td>
     <td>{{if .Errors}}<span class="sev-text-error">{{.Errors}} error(s)</span> {{end}}{{if .Warnings}}{{.Warnings}} warning(s){{end}}{{if not (or .Errors .Warnings)}}<span class="muted">none</span>{{end}}</td>
-    <td>{{if .BaselineVersion}}from {{.BaselineVersion}}{{if .Breaking}}: {{.Breaking}} breaking{{if .Acks}}, {{.Acks}} acknowledged{{end}}{{end}}{{else}}<span class="muted">first</span>{{end}}</td>
+    <td>{{if .BaselineVersion}}{{if eq .Status "published"}}<a href="/apis/{{$a.ID}}/diff?from={{.BaselineVersion}}&amp;to={{.Semver}}">from {{.BaselineVersion}}</a>{{else}}from {{.BaselineVersion}}{{end}}{{if .Breaking}}: {{.Breaking}} breaking{{if .Acks}}, {{.Acks}} acknowledged{{end}}{{end}}{{else}}<span class="muted">first</span>{{end}}</td>
     <td>{{with .Source.Commit}}<code>{{short . 7}}</code>{{end}}{{with .Source.CIRunURL}} <a href="{{.}}">CI run</a>{{end}}</td>
   </tr>
   {{end}}
