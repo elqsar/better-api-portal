@@ -1,0 +1,47 @@
+<h1>APIs</h1>
+<form class="filters" action="/apis" method="get"
+      hx-get="/apis" hx-target="#api-table" hx-swap="outerHTML" hx-push-url="true"
+      hx-trigger="change, input delay:300ms from:input[name=q]">
+  <input type="search" name="q" value="" placeholder="Filter by id or title" aria-label="Filter by id or title">
+  <select name="team" aria-label="Team">
+    <option value="">All teams</option>
+    <option value="team-orders" >Orders</option><option value="team-payments" selected>Payments</option>
+  </select>
+  <select name="kind" aria-label="Kind">
+    <option value="">All kinds</option>
+    <option >openapi</option><option >cloudevents</option><option >asyncapi</option>
+  </select>
+  <select name="lifecycle" aria-label="Lifecycle">
+    <option value="">Any lifecycle</option>
+    <option >experimental</option><option >production</option><option >deprecated</option><option >retired</option>
+  </select>
+  <noscript><button type="submit">Filter</button></noscript>
+</form>
+<div id="api-table">
+<table>
+  <thead><tr><th>API</th><th>Owner</th><th>Lifecycle</th><th>Latest</th><th class="num">Score</th></tr></thead>
+  <tbody>
+  <tr>
+    <td>
+      <a href="/apis/payments-events/versions/1.0.0">payments-events</a> <span class="badge">cloudevents</span>
+      <div class="muted">Payment events</div>
+    </td>
+    <td>Payments</td>
+    <td><span class="badge lc-production">production</span></td>
+    <td>1.0.0<div class="muted"><time></div></td>
+    <td class="num">98</td>
+  </tr>
+  <tr>
+    <td>
+      <a href="/apis/payments-http/versions/1.2.0">payments-http</a> <span class="badge">openapi</span>
+      <div class="muted">Payments API</div>
+    </td>
+    <td>Payments</td>
+    <td><span class="badge lc-production">production</span></td>
+    <td>1.2.0<div class="muted"><time></div></td>
+    <td class="num">92</td>
+  </tr>
+  </tbody>
+</table>
+<p class="muted">2 APIs</p>
+</div>

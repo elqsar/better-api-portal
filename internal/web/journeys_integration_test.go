@@ -2,7 +2,7 @@
 
 package web
 
-// Acceptance tests for the read UI's journeys (docs/spec/01-product.md,
+// Acceptance tests for the journeys (docs/spec/01-product.md, J1 and
 // J3–J5): each step's page is checked for what the journey needs, and its
 // <main> is compared with a golden file, so any change to these pages
 // shows up for review. To rewrite them: task test:journeys -- -update
@@ -11,11 +11,15 @@ package web
 
 import (
 	"flag"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/elqsar/better-api-portal/internal/initkit"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -89,6 +93,67 @@ func catalogue(t *testing.T) *site {
 		}
 	}
 	return s
+}
+
+// J1: an owner onboards a service with portal init: two files, no step in
+// the portal's UI, and the first push makes the APIs visible.
+func TestJourneyOnboardAService(t *testing.T) {
+	s := newSite(t)
+	dir := filepath.Join(t.TempDir(), "payments-service")
+	if err := os.CopyFS(dir, os.DirFS(payments)); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(filepath.Join(dir, "portal.yaml"))
+	before := files(t, dir)
+
+	// 1–2. portal init --owner team-payments --ci github.
+	specs, _, err := initkit.Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := initkit.Descriptor(initkit.Options{Owner: "team-payments"}, initkit.Propose(specs, initkit.ServiceName(dir)))
+	for p, b := range map[string][]byte{
+		"portal.yaml":        desc,
+		initkit.WorkflowPath: initkit.Workflow("http://portal.test", "v0.1.0"),
+	} {
+		p = filepath.Join(dir, p)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	added := slices.DeleteFunc(files(t, dir), func(f string) bool { return slices.Contains(before, f) })
+	if want := []string{initkit.WorkflowPath, "portal.yaml"}; !slices.Equal(added, want) {
+		t.Errorf("files added: %q, want %q", added, want)
+	}
+
+	// 3. The first push registers the APIs under the team.
+	st := s.pushDir("acme/payments", dir)
+	if st["payments-http"] != "published" || st["payments-events"] != "published" {
+		t.Fatalf("statuses %v", st)
+	}
+	body := s.page("/apis?team=team-payments")
+	contains(t, "J1 list", body, `href="/apis/payments-http/versions/1.2.0"`, `href="/apis/payments-events/versions/1.0.0"`, "Payments API")
+	golden(t, "j1-apis.html", body)
+	contains(t, "J1 API page", s.page("/apis/payments-http/versions/1.2.0"), "<h1>Payments API", "owned by Payments")
+}
+
+// files lists the files under dir, relative and sorted.
+func files(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
+		if err == nil && !e.IsDir() {
+			rel, _ := filepath.Rel(dir, p)
+			out = append(out, filepath.ToSlash(rel))
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // J3: a consumer searches "refund", then opens the API page.

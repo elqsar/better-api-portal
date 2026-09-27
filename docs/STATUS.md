@@ -21,7 +21,10 @@ the CLI (see "Known gaps"). **M3: read UI** is code-complete: all eight steps ar
 acceptance tests pass. Its "done when" also says engineers find APIs
 without asking, which needs a deployed portal, like M2's pilot. Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
-specs are available yet.
+specs are available yet. **M4: onboarding kit** is code-complete: `portal
+init` (with `--ci github` and `--events-from`), the onboarding guide, and a
+J1 acceptance test (see "Decisions (M4 onboarding)"). Its "done when" (3
+pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 
 | # | Commit | What |
 |---|---|---|
@@ -59,6 +62,7 @@ specs are available yet.
 | 31 | `ac98731` | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
 | 32 | `ade16db` | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
 | 33 | `397af16` | M4: onboarding guide `docs/guide/onboarding.md` |
+| 34 | | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
 
 ### J1/J2 against a portal
 ```sh
@@ -379,6 +383,14 @@ openapi, compat).
     a new type alongside rather than rename one producers send. The ack list
     in the roadmap's Q6 default doesn't apply: acks accept breaking changes,
     not lint errors.
+- **J1 acceptance test** (`TestJourneyOnboardAService`, in
+  `task test:journeys`): it copies the payments fixture without its
+  `portal.yaml` and generates the descriptor and workflow with `initkit`
+  (the CLI's own flags are tested in `cmd/portal`). It asserts that exactly
+  those 2 files were added and that one push publishes both APIs with the
+  fixture's real ids, then checks the team's API list (golden
+  `j1-apis.html`) and the API page. The generated descriptor has no
+  `consumes`, unlike the fixture's.
 - **Guide:** `docs/guide/onboarding.md` (a how-to, linked from the spec
   README and printed by `portal init`): install, `init` (with specs, or
   `--events-from`), common findings and their fixes, commit and publish,
@@ -712,26 +724,26 @@ be changed in M3's first commit to match.
 
 ## Next steps
 
-**M2** is code-complete (table rows 11–16). What remains is operational:
-deploy a portal and have a pilot service push from CI.
+M1 is done. **M2, M3 and M4 are code-complete** (rows 11–24 and 31–34).
+Their remaining "done when"s are all operational, and all wait on the same
+thing, a deployed portal:
+1. Push the repo to `github.com/elqsar/better-api-portal` and cut `v0.1.0`
+   (`task release -- v0.1.0`, then `gh release create v0.1.0 dist/*`).
+2. Deploy the image (`task image`) with a `portal.config.yaml` that lists the
+   real teams, OIDC and brokers.
+3. Pilot teams follow `docs/guide/onboarding.md`. Time each onboarding (M4's
+   target is 30 minutes), and note every finding that fires on their specs:
+   that data feeds M5's ruleset tuning and the guide's rule table.
 
-**M3** is code-complete (rows 17–24). Like M2, what remains is a deployed
-portal that engineers actually use.
+Also done since M3: descriptor-only changes don't need a version bump (row
+27), consumers are grouped by service (28), compatible changes name their
+fields (29), and API titles come from the spec (30).
 
-The server rules `ce-type-unique` and `ce-topic-single-owner` are done
-(row 25), and so is CLI distribution (row 26).
-
-For the M2 pilot, what's left is outside the code: push the repo to
-`github.com/elqsar/better-api-portal`, cut `v0.1.0` (`task release -- v0.1.0`,
-then `gh release create`), deploy the image, and point a service's
-workflow at it.
-
-Next in the code: M4, the onboarding kit (CI templates, `portal init`, a
-migration guide).
-
-The journeys' findings are fixed (rows 28–30), and descriptor-only changes
-no longer wait for a version bump (row 27).
-
+Next in the code: **M5, rollout**, which covers a Helm chart, `warn-until`
+grace for new errors, and ruleset tuning once pilot specs exist. A good
+candidate before it is the gap in the next section that pilots will hit
+first: search documents keep the old title and tags after a descriptor-only
+change.
 
 ## Known gaps
 
