@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27 · Last commit: `7ebca18`
+Last updated: 2026-09-27 · Last commit: `c09b395`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,8 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–5 (the index, the web
-skeleton with OIDC sign-in, the API list and pages, Scalar docs, the event page) are done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–6 (the index, the web
+skeleton with OIDC sign-in, the API list and pages, Scalar docs, the event page, search) are done (see "Decisions (M3 UI)"). Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -46,6 +46,7 @@ specs are available yet.
 | 19 | `8a5833f` | API list with filters, API pages (overview, lint & changes, versions), deprecation banner |
 | 20 | `6f180f2` | Docs tab: Scalar (vendored, offline) over a server-resolved single OpenAPI document |
 | 21 | `7ebca18` | Event page `/events/{type}`: CE attributes, payload schema tree, examples, bindings with broker links, owner and consumers; `brokers` config, `descriptor-broker-unknown` |
+| 22 | `c09b395` | Search `/search`: full text + title trigrams, grouped by API, deprecated ranked lower, retired hidden; top-bar box; 500-API latency test, `task bench:search` |
 
 ### J1/J2 against a portal
 ```sh
@@ -97,14 +98,14 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
-| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `TypeConsumers`, `Dependencies`, `Search` (basic) |
+| `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `TypeConsumers`, `Dependencies`, `Search`; `storetest.SeedAPIs` makes synthetic APIs |
 
 Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
 `task psql`, `task run` (serve on http://localhost:8080 with `--dev-login`: the
 stub sign-in page lets you pick a name and groups), `task test:integration`
-(store, httpapi and the CLI end to end, one cloned database per test); `task dev:db:down` wipes
-it.
+(store, httpapi and the CLI end to end, one cloned database per test), `task bench:search`
+(500 synthetic APIs, logs the query plan); `task dev:db:down` wipes it.
 Golden files are regenerated with `go test ./<pkg> -update` (eventcatalog,
 openapi, compat).
 
@@ -410,9 +411,44 @@ be changed in M3's first commit to match.
   - `brokers` in `portal.config.yaml`: `name` (unique, required),
     `protocol`, `ui` (URL); protocol fields (`bootstrap`, `account`, …)
     are kept raw in `Settings`. The example config's kafka-prod got a `ui`.
+- **Search (step 6, done):**
+  - `store.Search(SearchQuery{Q, Kind, Team, API, Limit})`: candidates are
+    a `UNION` of index-backed branches (tsquery on `tsv`; `title %> q`,
+    i.e. `word_similarity`; `ILIKE` for queries under 3 characters), limited
+    to latest versions of APIs that aren't retired. An `OR` would use
+    neither GIN index.
+  - Rank = `ts_rank_cd` + 2 × title word similarity + 1 for an exact title
+    + 0.1 for the API's own document, × 0.5 when deprecated. Ties by api
+    id, kind, ref.
+  - `pg_trgm.word_similarity_threshold` is 0.45 (default 0.6 misses
+    "refnd" → "refund", 0.5), set per transaction.
+  - **`plan_cache_mode = force_custom_plan`** in the same transaction: pgx
+    prepares the statement, and after five runs Postgres chose a generic
+    plan that can't prune the UNION branches. p95 at 500 APIs went from
+    6.2 s to 61 ms (limit 300 ms). Keep it if the query changes.
+  - Snippets: `ts_headline` over `body`, for the returned rows only, with
+    `\x01`/`\x02` delimiters that `web.highlight` turns into `<mark>`
+    after escaping (ts_headline also drops tag-like text). The web layer
+    collapses repeated adjacent words (the index holds identifiers as
+    written and split) and hides a hit's snippet that marks nothing.
+  - UI: `/search?q=&kind=&team=&api=`, 200 hits grouped by API in order
+    of each API's best hit; the API's own document is the group heading;
+    5 hits per group with "N more in …" (`api=` narrows to one API). Links:
+    messages → `/events/{type}`, OpenAPI operations and schemas → the Docs
+    tab, the rest → the version overview. htmx swaps `#search-results`
+    as you type (250 ms) with a cleaned `HX-Push-Url` (`pushURL`, shared
+    with `/apis`). A search box sits in the top bar except on home and
+    search; hidden under 50rem.
+  - Benchmark (`storetest.SeedAPIs`: 500 APIs, two versions each, 20
+    operations or messages and 10 schemas, every 10th deprecated, every
+    25th retired): 13–27 ms per search on the dev machine;
+    `TestSearchLatency500` (in `task test:integration`, skipped with
+    `-short`) fails at p95 ≥ 300 ms and logs the plan.
+  - Not done: `GET /api/v1/search` and the older-versions filter (see
+    "Known gaps").
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
   skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page (done);
-  (6) search with a 500-API benchmark; (7) diff page; (8) J3–J5 acceptance
+  (6) search with a 500-API benchmark (done); (7) diff page; (8) J3–J5 acceptance
   tests with golden HTML.
 
 ## Decisions (store)
@@ -458,9 +494,10 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–5
-are done. Next is step 6: search (`/search`, the home page box), with
-trigram matching on titles, ranking by lifecycle, and the 500-API benchmark.
+**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–6
+are done. Next is step 7: the diff page (`/apis/{id}/diff?from=&to=`),
+server-side Myers diff per file with a canonical-JSON toggle, folded
+unchanged regions, cacheable by the two content hashes.
 
 Then, while the rows are fresh: the server rules `ce-type-unique` and
 `ce-topic-single-owner` in the push verdict, next to `consumes-unknown-api`
@@ -488,6 +525,10 @@ task and a Containerfile, so the example workflow stops needing
   descriptor-only change (`consumes`, links, lifecycle, environments)
   reaches the portal only with the spec's next version. Seen while testing
   the event page's consumers.
+- **Search:** no `GET /api/v1/search` yet (`/api/v1` takes CI credentials
+  only; it comes with session reads there or the MCP server), and no
+  filter for older versions. After an htmx search the page `<title>` keeps
+  the first query.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
 - Rules that need the server aren't implemented yet: `ce-type-unique` and
   `ce-topic-single-owner`. The rows they need (`messages`, `bindings`) exist
