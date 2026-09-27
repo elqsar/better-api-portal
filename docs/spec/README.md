@@ -77,3 +77,6 @@ environments and rulesets are configuration.
 
 Machine-readable pieces: [`schemas/`](schemas/) (JSON Schemas for the two file
 formats) and [`examples/`](examples/) (a complete sample service).
+
+For service teams: [Onboard a service](../guide/onboarding.md), which covers
+`portal init`, the CI workflow, and migrating existing CloudEvents + JSON Schema.

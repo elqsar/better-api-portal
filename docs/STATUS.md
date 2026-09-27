@@ -58,6 +58,7 @@ specs are available yet.
 | 30 | `a439b02` | API list and page titles fall back to the latest spec's title |
 | 31 | `ac98731` | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
 | 32 | `ade16db` | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
+| 33 | | M4: onboarding guide `docs/guide/onboarding.md` |
 
 ### J1/J2 against a portal
 ```sh
@@ -378,6 +379,12 @@ openapi, compat).
     a new type alongside rather than rename one producers send. The ack list
     in the roadmap's Q6 default doesn't apply: acks accept breaking changes,
     not lint errors.
+- **Guide:** `docs/guide/onboarding.md` (a how-to, linked from the spec
+  README and printed by `portal init`): install, `init` (with specs, or
+  `--events-from`), common findings and their fixes, commit and publish,
+  versions and acks, descriptor-only changes, and troubleshooting. Its rule
+  table lists the rules that fire most on unlinted specs, from the example
+  and fixtures; revisit it with pilot data (M5).
 - **CI template:** `internal/initkit/templates/github-actions.yml` is
   embedded; `Workflow` replaces the example's `PORTAL_URL` and
   `PORTAL_CLI_VERSION`. `TestWorkflowExample` keeps
