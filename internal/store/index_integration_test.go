@@ -102,7 +102,7 @@ func TestIndex(t *testing.T) {
 	}()); err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.Search(ctx, "cancel", 20)
+	hits, err := s.Search(ctx, store.SearchQuery{Q: "cancel", Limit: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestIndex(t *testing.T) {
 	if err := s.Reindex(ctx, v1, idx); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := s.Search(ctx, "cancel", 20); len(again) != len(hits) {
+	if again, _ := s.Search(ctx, store.SearchQuery{Q: "cancel", Limit: 20}); len(again) != len(hits) {
 		t.Errorf("after reindex: %d hits, want %d", len(again), len(hits))
 	}
 	vs, err := s.PublishedVersions(ctx)

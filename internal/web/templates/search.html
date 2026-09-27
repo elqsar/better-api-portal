@@ -1,0 +1,59 @@
+{{define "content"}}
+<h1>Search</h1>
+<form class="filters" action="/search" method="get" role="search"
+      hx-get="/search" hx-target="#search-results" hx-swap="outerHTML" hx-push-url="true"
+      hx-trigger="submit, change, input changed delay:250ms from:input[name=q]">
+  <input type="search" name="q" value="{{.Data.Query.Q}}" placeholder="Search operations, event types and schemas" aria-label="Search" autofocus>
+  <select name="kind" aria-label="Kind">
+    <option value="">Everything</option>
+    {{range .Data.Kinds}}<option value="{{.Value}}" {{if eq .Value $.Data.Query.Kind}}selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+  <select name="team" aria-label="Team">
+    <option value="">All teams</option>
+    {{range .Data.Teams}}<option value="{{.Value}}" {{if eq .Value $.Data.Query.Team}}selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+  {{with .Data.Query.API}}<input type="hidden" name="api" value="{{.}}">{{end}}
+  <button class="primary" type="submit">Search</button>
+</form>
+{{template "search-results" .}}
+{{end}}
+
+{{define "search-results"}}
+<div id="search-results">
+{{with .Data}}
+{{if .Query.Q}}
+  {{if .Groups}}
+  <p class="muted">
+    {{if .Truncated}}The first {{.Hits}} results{{else}}{{.Hits}} result{{if ne .Hits 1}}s{{end}}{{end}}
+    in {{len .Groups}} API{{if ne (len .Groups) 1}}s{{end}}{{with .Query.API}} · only {{.}}, <a href="/search?q={{$.Data.Query.Q}}">search all APIs</a>{{end}}
+  </p>
+  {{range .Groups}}
+  <section class="result-group">
+    <h2>
+      <a href="/apis/{{.APIID}}/versions/{{.Semver}}">{{.APIID}}</a>
+      {{template "kind" .APIKind}} {{template "lifecycle" .Lifecycle}}
+      <span class="muted owner">{{.Owner}}</span>
+    </h2>
+    {{if .Title}}<div class="muted">{{.Title}}{{with .Snippet}} · {{.}}{{end}}</div>{{end}}
+    {{if .Hits}}
+    <ul class="results">
+      {{range .Hits}}
+      <li>
+        <span class="badge">{{.Kind}}</span> <a href="{{.URL}}"><code>{{.Ref}}</code></a>
+        {{with .Snippet}}<div class="snippet">{{.}}</div>{{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+    {{if .MoreURL}}<a class="more" href="{{.MoreURL}}">{{.More}} more in {{.APIID}}</a>{{end}}
+  </section>
+  {{end}}
+  {{else}}
+  <p class="muted">Nothing matches <strong>{{.Query.Q}}</strong>. Retired APIs aren't searched.</p>
+  {{end}}
+{{else}}
+  <p class="muted">Search every published API's operations, event types and schemas. Words match stemmed (“refunds” finds “refund”), titles also by similarity, so a typo still finds them.</p>
+{{end}}
+{{end}}
+</div>
+{{end}}

@@ -30,7 +30,7 @@ var templateDB = fmt.Sprintf("portal_test_template_%d", os.Getpid())
 // New returns a store on a database cloned from a migrated template, and
 // drops the database when the test ends. It skips the test without
 // PORTAL_TEST_DSN.
-func New(t *testing.T) *store.Store {
+func New(t testing.TB) *store.Store {
 	t.Helper()
 	dsn := os.Getenv("PORTAL_TEST_DSN")
 	if dsn == "" {

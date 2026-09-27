@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/mod/semver"
@@ -287,29 +288,110 @@ func (s *Store) Dependencies(ctx context.Context, apiID string) (consumes, consu
 // Hit is a search result.
 type Hit struct {
 	APIID, Semver, Kind, Ref, Title string
-	Rank                            float32
+	// The API's kind (openapi, cloudevents, …), owner and lifecycle.
+	APIKind, Owner, Lifecycle string
+	// Snippet is an excerpt of the document's text, with the matched words
+	// between SnippetStart and SnippetStop. It isn't HTML.
+	Snippet string
+	Rank    float32
 }
 
-// Search finds documents in the APIs' latest versions matching q, a
-// web-search style query ("refund -legacy"), best first. It is the basic
-// full-text query; M3's search step adds trigram matching on titles and
-// ranking by lifecycle.
-func (s *Store) Search(ctx context.Context, q string, limit int) ([]Hit, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT d.api_id, v.semver, d.kind, d.ref, d.title, ts_rank(d.tsv, query) AS rank
-		FROM search_docs d
+// Snippet delimiters: control characters, so no markup comes out of
+// Postgres.
+const (
+	SnippetStart = "\x01"
+	SnippetStop  = "\x02"
+)
+
+// SearchQuery is a search. Empty filters match everything.
+type SearchQuery struct {
+	// Q is a web-search style query ("refund -legacy"). Its titles are
+	// matched by trigram as well, so a typo still finds them.
+	Q               string
+	Kind, Team, API string
+	Limit           int
+}
+
+// wordSimilarity is the trigram threshold: 0.6 by default, which misses
+// "refnd" for "refund" (0.5).
+const wordSimilarity = "0.45"
+
+// searchSettings applies to Search's transaction. pgx prepares the query,
+// and after five runs Postgres may switch to a generic plan, which can't
+// drop the UNION branches that don't apply to the query: at 500 APIs that
+// took p95 from 61 ms to 6 s.
+const searchSettings = `SELECT set_config('pg_trgm.word_similarity_threshold', $1, true),
+	set_config('plan_cache_mode', 'force_custom_plan', true)`
+
+// Search finds documents in the APIs' latest versions, best first. A
+// document matches by full text (terms above body) or by trigram on its
+// title. Deprecated APIs rank at half weight; retired ones are left out.
+func (s *Store) Search(ctx context.Context, sq SearchQuery) ([]Hit, error) {
+	if strings.TrimSpace(sq.Q) == "" {
+		return nil, nil
+	}
+	var hits []Hit
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, searchSettings, wordSimilarity); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, searchSQL, sq.args()...)
+		if err != nil {
+			return err
+		}
+		hits, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Hit, error) {
+			var h Hit
+			err := r.Scan(&h.APIID, &h.Semver, &h.Kind, &h.Ref, &h.Title, &h.APIKind, &h.Owner, &h.Lifecycle, &h.Snippet, &h.Rank)
+			return h, err
+		})
+		return err
+	})
+	return hits, err
+}
+
+func (sq SearchQuery) args() []any {
+	return []any{sq.Q, escapeLike(sq.Q), sq.Kind, sq.Team, sq.API, sq.Limit, SnippetStart, SnippetStop}
+}
+
+// searchSQL runs with pg_trgm.word_similarity_threshold set. The
+// candidates are a UNION of the index-backed matches: an OR would use
+// neither GIN index. Short queries have too few trigrams, so they use a
+// substring match instead. Snippets are made for the returned rows only.
+const searchSQL = `
+	WITH q AS (
+		SELECT websearch_to_tsquery('english', $1) AS tsq, $1::text AS raw
+	),
+	candidates AS (
+		SELECT d.id FROM search_docs d, q WHERE d.tsv @@ q.tsq
+		UNION
+		SELECT d.id FROM search_docs d, q WHERE length(q.raw) >= 3 AND d.title %> q.raw
+		UNION
+		SELECT d.id FROM search_docs d, q WHERE length(q.raw) < 3 AND d.title ILIKE '%' || $2 || '%'
+	),
+	ranked AS (
+		SELECT d.id, d.api_id, v.semver, d.kind, d.ref, d.title, d.body,
+		       a.kind AS api_kind, a.owner, a.lifecycle,
+		       ((ts_rank_cd(d.tsv, q.tsq) + 2 * word_similarity(q.raw, d.title)
+		         + CASE WHEN lower(d.title) = lower(q.raw) THEN 1 ELSE 0 END
+		         + CASE d.kind WHEN 'api' THEN 0.1 ELSE 0 END)
+		        * CASE a.lifecycle WHEN 'deprecated' THEN 0.5 ELSE 1 END)::real AS rank
+		FROM candidates c
+		JOIN search_docs d ON d.id = c.id
 		JOIN apis a ON a.latest_version_id = d.version_id
 		JOIN versions v ON v.id = d.version_id,
-		     websearch_to_tsquery('english', $1) query
-		WHERE d.tsv @@ query
+		     q
+		WHERE a.lifecycle <> 'retired'
+		  AND ($3 = '' OR d.kind = $3)
+		  AND ($4 = '' OR a.owner = $4)
+		  AND ($5 = '' OR d.api_id = $5)
 		ORDER BY rank DESC, d.api_id, d.kind, d.ref
-		LIMIT $2`, q, limit)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Hit, error) {
-		var h Hit
-		err := r.Scan(&h.APIID, &h.Semver, &h.Kind, &h.Ref, &h.Title, &h.Rank)
-		return h, err
-	})
-}
+		LIMIT $6
+	)
+	SELECT r.api_id, r.semver, r.kind, r.ref, r.title, r.api_kind, r.owner, r.lifecycle,
+	       CASE WHEN r.body = '' THEN ''
+	            ELSE ts_headline('english', r.body, q.tsq,
+	                             'StartSel=' || $7 || ', StopSel=' || $8 || ', MaxWords=24, MinWords=12')
+	       END,
+	       r.rank
+	FROM ranked r, q
+	ORDER BY r.rank DESC, r.api_id, r.kind, r.ref`

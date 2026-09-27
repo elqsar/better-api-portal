@@ -197,6 +197,19 @@ body {
   .s-req { color: var(--err); font-size: 0.8em; }
   .s-fact, .s-note { color: var(--muted); font-size: 0.85em; }
   .s-desc { color: var(--muted); font-size: 0.9em; margin-left: 1rem; }
+
+  /* Search */
+  .topbar-search input[type="search"] { width: 14rem; padding: 0.25rem 0.5rem; }
+  @media (max-width: 50rem) { .topbar-search { display: none; } }
+  .result-group { margin: 0 0 1.75rem; }
+  .result-group h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0 0 0.25rem; font-size: 1.05rem; }
+  .result-group h2 .owner { font-size: 0.8em; font-weight: normal; }
+  ul.results { list-style: none; padding: 0; margin: 0.5rem 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  ul.results li { padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  ul.results li:last-child { border-bottom: 0; }
+  .snippet { color: var(--muted); font-size: 0.9em; }
+  mark { background: color-mix(in srgb, var(--warn) 28%, transparent); color: inherit; border-radius: 2px; padding: 0 0.1em; }
+  .more { font-size: 0.9em; }
 }
 
 }

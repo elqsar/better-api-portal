@@ -18,6 +18,11 @@
     <a href="/" {{if eq $.Nav "home"}}aria-current="page"{{end}}>Home</a>
     <a href="/apis" {{if eq $.Nav "apis"}}aria-current="page"{{end}}>APIs</a>
   </nav>
+  {{if and (ne $.Nav "home") (ne $.Nav "search")}}
+  <form class="topbar-search" action="/search" method="get" role="search">
+    <input type="search" name="q" placeholder="Search" aria-label="Search">
+  </form>
+  {{end}}
   <div class="user">
     <span>{{.DisplayName}}</span>
     {{if .Admin}}<span class="badge admin">admin</span>{{end}}

@@ -94,7 +94,7 @@ func TestEndToEnd(t *testing.T) {
 	mustContain(t, out, "orders-http 2.3.0: published  https://portal.test/apis/orders-http/versions/2.3.0",
 		"orders-events 1.4.0: published")
 	// Published versions are indexed for the UI and search.
-	if hits, err := s.Search(context.Background(), "cancel", 10); err != nil || len(hits) == 0 {
+	if hits, err := s.Search(context.Background(), store.SearchQuery{Q: "cancel", Limit: 10}); err != nil || len(hits) == 0 {
 		t.Errorf("search after push: %v, %v", hits, err)
 	}
 

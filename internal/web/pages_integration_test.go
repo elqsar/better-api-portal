@@ -369,3 +369,49 @@ consumes:`})
 		`<a href="/apis/orders-events-copy">orders-events-copy</a> <span class="muted">(everything from orders-events)</span>`,
 		"Declared by more than one API.", `<a href="/apis/orders-events-copy/versions/1.5.0">orders-events-copy</a> (produces)`)
 }
+
+func TestSearchPage(t *testing.T) {
+	s := newSite(t)
+	s.push([3]string{"api/events.yaml", "summary: An order was cancelled.", "summary: An order was <b>cancelled</b> & closed."})
+	c := s.browser()
+
+	code, body, _ := s.get(c, "/search?q=cancel")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	contains(t, "/search?q=cancel", body,
+		`<a href="/apis/orders-events/versions/`, `<a href="/apis/orders-http/versions/2.3.0">orders-http</a>`,
+		`href="/events/com.acme.orders.order.cancelled.v1"`,
+		`href="/apis/orders-http/versions/2.3.0/docs"><code>POST /orders/{orderId}/cancellation</code>`,
+		`An order was <mark>cancelled</mark> &amp; closed.`, // escaped, marked, tags dropped by ts_headline
+		`<title>cancel · Search`)
+	if strings.Contains(body, `class="topbar-search"`) {
+		t.Error("the search page has a second search box in the top bar")
+	}
+	if strings.Contains(body, "status status") || strings.Contains(body, "reason reason") {
+		t.Errorf("untidy or unmarked snippets:\n%s", body)
+	}
+
+	code, body, h := s.get(c, "/search?q=cancel&kind=message&team=", "HX-Request", "true")
+	if h.Get("HX-Push-Url") != "/search?kind=message&q=cancel" {
+		t.Errorf("pushed URL %q", h.Get("HX-Push-Url"))
+	}
+	if code != 200 || strings.Contains(body, "<html") || !strings.HasPrefix(strings.TrimSpace(body), `<div id="search-results">`) {
+		t.Fatalf("htmx: %d, want only the results:\n%s", code, body)
+	}
+	if strings.Contains(body, "orders-http") {
+		t.Errorf("kind filter:\n%s", body)
+	}
+
+	_, body, _ = s.get(c, "/search")
+	contains(t, "/search", body, `name="q" value=""`, "Search every published API")
+	if strings.Contains(body, "result-group") {
+		t.Errorf("results without a query:\n%s", body)
+	}
+	_, body, _ = s.get(c, "/search?q=zzzzqqq")
+	contains(t, "no match", body, "Nothing matches <strong>zzzzqqq</strong>")
+
+	// Other pages get a search box in the top bar.
+	_, body, _ = s.get(c, "/apis")
+	contains(t, "/apis", body, `class="topbar-search" action="/search"`)
+}

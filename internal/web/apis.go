@@ -36,6 +36,15 @@ func (s *Server) teamNames() map[string]string {
 	return names
 }
 
+// teamOptions are the teams for a filter.
+func (s *Server) teamOptions() []option {
+	var opts []option
+	for _, t := range s.Config.Teams {
+		opts = append(opts, option{t.Slug, cmp.Or(t.Name, t.Slug)})
+	}
+	return opts
+}
+
 func (s *Server) apiList(w http.ResponseWriter, r *http.Request, u *User) {
 	q := r.URL.Query()
 	f := store.APIFilter{Team: q.Get("team"), Kind: q.Get("kind"), Lifecycle: q.Get("lifecycle"), Tag: q.Get("tag"), Q: q.Get("q")}
@@ -44,23 +53,10 @@ func (s *Server) apiList(w http.ResponseWriter, r *http.Request, u *User) {
 		s.fail(w, r, u, err)
 		return
 	}
-	d := apiListData{Filter: f, APIs: apis, Kinds: kinds, Lifecycles: lifecycles, TeamNames: s.teamNames()}
-	for _, t := range s.Config.Teams {
-		d.Teams = append(d.Teams, option{t.Slug, cmp.Or(t.Name, t.Slug)})
-	}
+	d := apiListData{Filter: f, APIs: apis, Kinds: kinds, Lifecycles: lifecycles, TeamNames: s.teamNames(), Teams: s.teamOptions()}
 	if htmx(r) {
 		// The address bar gets only the filters in use.
-		clean := url.Values{}
-		for k, vs := range q {
-			if len(vs) > 0 && vs[0] != "" {
-				clean.Set(k, vs[0])
-			}
-		}
-		push := "/apis"
-		if len(clean) > 0 {
-			push += "?" + clean.Encode()
-		}
-		w.Header().Set("HX-Push-Url", push)
+		w.Header().Set("HX-Push-Url", pushURL("/apis", q))
 		s.renderBlock(w, r, http.StatusOK, "apis", "api-table", page{User: u, Data: d})
 		return
 	}

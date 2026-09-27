@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -314,5 +316,59 @@ func TestParallelSignIns(t *testing.T) {
 	}
 	if resp, _ := signIn(t, c, srv, second); resp.StatusCode != 404 || resp.Request.URL.Path != "/other" {
 		t.Errorf("second sign-in: %d at %s", resp.StatusCode, resp.Request.URL)
+	}
+}
+
+func TestHighlight(t *testing.T) {
+	for in, want := range map[string]template.HTML{
+		"a \x01<b>\x02 & c":  "a <mark>&lt;b&gt;</mark> &amp; c",
+		"\x01one\x02 \x01two": "<mark>one</mark> <mark>two</mark>", // closed at the end
+		"stray \x02 stop":     "stray  stop",
+		"":                    "",
+	} {
+		if got := highlight(in); got != want {
+			t.Errorf("highlight(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTidy(t *testing.T) {
+	for in, want := range map[string]string{
+		"status  status placed \x01cancelled\x02 cancelled": "status placed \x01cancelled\x02",
+		"cancelled \x01cancelled\x02 Orders orders":         "\x01cancelled\x02 Orders",
+		"a b a":                                              "a b a",
+	} {
+		if got := tidy(in); got != want {
+			t.Errorf("tidy(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestGroupHits(t *testing.T) {
+	hit := func(api, kind, ref string) store.Hit {
+		return store.Hit{APIID: api, APIKind: "openapi", Semver: "1.0.0", Kind: kind, Ref: ref, Title: ref, Owner: "team-a"}
+	}
+	hits := []store.Hit{hit("b", "operation", "GET /b0"), hit("a", "api", "a")}
+	for i := range 7 {
+		hits = append(hits, hit("b", "schema", fmt.Sprint("#/s", i)))
+	}
+	hits = append(hits, hit("a", "message", "com.x.v1"))
+
+	groups := groupHits(hits, store.SearchQuery{Q: "x y", Kind: "schema"}, map[string]string{"team-a": "Team A"})
+	if len(groups) != 2 || groups[0].APIID != "b" || groups[1].APIID != "a" {
+		t.Fatalf("groups %+v, want b then a (order of best hit)", groups)
+	}
+	if b := groups[0]; len(b.Hits) != perGroup || b.More != 3 || b.MoreURL != "/search?api=b&kind=schema&q=x+y" || b.Owner != "Team A" {
+		t.Errorf("b = %+v", b)
+	}
+	if a := groups[1]; a.Title != "a" || len(a.Hits) != 1 || a.Hits[0].URL != "/events/com.x.v1" || a.MoreURL != "" {
+		t.Errorf("a = %+v: the API's own hit is the heading", a)
+	}
+	if u := groups[0].Hits[0].URL; u != "/apis/b/versions/1.0.0/docs" {
+		t.Errorf("operation URL %q", u)
+	}
+	// Narrowed to one API, every hit shows.
+	if g := groupHits(hits, store.SearchQuery{Q: "x", API: "b"}, nil); len(g[0].Hits) != 8 || g[0].More != 0 {
+		t.Errorf("narrowed: %d hits, %d more", len(g[0].Hits), g[0].More)
 	}
 }

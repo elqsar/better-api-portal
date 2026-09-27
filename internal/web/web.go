@@ -51,6 +51,7 @@ type Store interface {
 	Dependencies(ctx context.Context, apiID string) (consumes, consumers []store.Dependency, err error)
 	MessageRoles(ctx context.Context, msgType string) ([]store.MessageRole, error)
 	TypeConsumers(ctx context.Context, msgType string, owners []string) ([]store.Dependency, error)
+	Search(ctx context.Context, q store.SearchQuery) ([]store.Hit, error)
 	Bundle(ctx context.Context, contentHash string) ([]byte, error)
 }
 
@@ -187,6 +188,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/callback", s.callback)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.Handle("GET /{$}", s.authed(s.home))
+	mux.Handle("GET /search", s.authed(s.search))
 	mux.Handle("GET /apis", s.authed(s.apiList))
 	mux.Handle("GET /apis/{id}", s.authed(s.apiLatest))
 	mux.Handle("GET /apis/{id}/versions", s.authed(s.apiVersions))

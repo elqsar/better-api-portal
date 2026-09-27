@@ -113,7 +113,7 @@ Target: < 5 s server time for a 5 000-line spec at MVP scale.
 
 Sizing: 500 APIs × 50 versions × ~200 KB compressed is about 5 GB worst case, and realistically well under 1 GB. `bytea` is fine at that size, and the `bundles` table sits behind a small interface so S3/GCS can be swapped in later if needed.
 
-Search is tuned to show only **latest** versions by default. Older versions are searchable with a filter.
+Search is tuned to show only **latest** versions by default. Older versions are searchable with a filter (not built yet). A document matches by full text (`terms` weighted above `body`) or by trigram similarity on its title, so a typo such as "refnd" still finds `refund` titles. Results are ranked by text rank plus title similarity, and grouped by API in the UI. Deprecated APIs rank at half weight, and retired ones are left out of search, though they stay reachable by URL.
 
 Only published versions are indexed. Everything from `version_models` to `search_docs`, plus `latest_version_id`, is derived from the bundles and `apis.meta`, so `portal reindex` can rebuild it after a change to the index; it's written in the push's transaction otherwise. Identifiers are split into words before indexing (`com.acme.orders.refund.issued.v1` → `com acme orders refund issued v1`, `orderId` → `order id`), so a search for "refund" finds event types, paths and schema properties.
 
