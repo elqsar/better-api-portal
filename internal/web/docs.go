@@ -77,7 +77,7 @@ func (s *Server) apiDocs(w http.ResponseWriter, r *http.Request, u *User) {
 	d.Tab = "docs"
 	nonce := randomString()
 	w.Header().Set("Content-Security-Policy", csp("'nonce-"+nonce+"'"))
-	s.render(w, r, http.StatusOK, "api", page{Title: d.API.ID + " docs", Nav: "apis", User: u, Data: d, Wide: true, StyleNonce: nonce})
+	s.render(w, r, http.StatusOK, "api", page{Title: d.API.Name() + " docs", Nav: "apis", User: u, Data: d, Wide: true, StyleNonce: nonce})
 }
 
 // openAPIDocument serves a version's bundle resolved into one document.

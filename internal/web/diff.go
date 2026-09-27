@@ -85,7 +85,7 @@ func (s *Server) apiDiff(w http.ResponseWriter, r *http.Request, u *User) {
 			d.Files = append(d.Files, df)
 		}
 	}
-	p := page{Title: d.API.ID + " diff", Nav: "apis", User: u, Data: d}
+	p := page{Title: d.API.Name() + " diff", Nav: "apis", User: u, Data: d}
 	if htmx(r) {
 		w.Header().Set("HX-Push-Url", pushURL(r.URL.Path, r.URL.Query()))
 		s.renderBlock(w, r, http.StatusOK, "diff", "diff-body", p)

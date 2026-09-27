@@ -2,7 +2,7 @@
 {{$a := .Data.API}}
 <header class="api-head">
   <p class="crumbs"><a href="/apis">APIs</a> / {{$a.ID}}</p>
-  <h1>{{or $a.Title $a.ID}} {{template "kind" $a.Kind}} {{template "lifecycle" $a.Lifecycle}}</h1>
+  <h1>{{$a.Name}} {{template "kind" $a.Kind}} {{template "lifecycle" $a.Lifecycle}}</h1>
   {{with .Data.Version}}
   <p class="muted">
     Version <strong>{{.Semver}}</strong>{{if $.Data.IsLatest}} (latest){{else}} · <a href="/apis/{{$a.ID}}/versions/{{$a.LatestSemver}}">latest is {{$a.LatestSemver}}</a>{{end}}

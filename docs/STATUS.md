@@ -55,6 +55,7 @@ specs are available yet.
 | 27 | `c76fb54` | An `unchanged` push updates the API's metadata (descriptor-only changes need no version bump) |
 | 28 | `88cd609` | Consumers grouped by service (repo) on the event page and the dependencies tab |
 | 29 | `90ac5ba` | Compatible payload changes name their fields (`compat.FieldChanges`) |
+| 30 | | API list and page titles fall back to the latest spec's title |
 
 ### J1/J2 against a portal
 ```sh
@@ -592,6 +593,11 @@ be changed in M3's first commit to match.
     fixed: a removed message type linked to its event page, which is a
     404 once nothing declares it.
   - J3's latency target stays with `TestSearchLatency500`.
+- **API title** (after M3): the descriptor's `title`, else the latest
+  version's spec title (`version_models.model->>'title'`), in `ListAPIs`
+  (shown and matched by `q`) and `APIDetail`; `APIDetail.Name()` falls back
+  to the id. The heading and the page `<title>` use it; the crumbs keep the
+  id.
 - **Consumers by service** (after M3): `consumes` stays per descriptor
   (decided 2026-09-27; no per-API `consumes`). `store.Dependency` carries the
   consuming API's repo and owner, and `web.byRepo` groups the event page's
@@ -661,9 +667,8 @@ workflow at it.
 Next in the code: M4, the onboarding kit (CI templates, `portal init`, a
 migration guide).
 
-Found by the journeys, worth deciding before M4:
-- The API page's heading falls back to the id, not the spec's title
-  (search uses the spec's).
+The journeys' findings are fixed (rows 28–30), and descriptor-only changes
+no longer wait for a version bump (row 27).
 
 
 ## Known gaps

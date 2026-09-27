@@ -29,21 +29,26 @@ type APIFilter struct {
 	Q string
 }
 
+// titleSQL is an API's title: the descriptor's, else the latest version's
+// spec title (vm is its version_models row).
+const titleSQL = `COALESCE(NULLIF(a.meta->>'title', ''), vm.model->>'title', '')`
+
 // ListAPIs lists the APIs with a published version: in use first, then
 // deprecated, then retired, each by id.
 func (s *Store) ListAPIs(ctx context.Context, f APIFilter) ([]APISummary, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT a.id, a.kind, COALESCE(a.meta->>'title', ''), a.owner, a.lifecycle, a.sunset,
+		SELECT a.id, a.kind, `+titleSQL+`, a.owner, a.lifecycle, a.sunset,
 		       ARRAY(SELECT jsonb_array_elements_text(COALESCE(a.meta->'tags', '[]'))),
 		       v.semver, v.created_at, COALESCE(l.score, 0)
 		FROM apis a
 		JOIN versions v ON v.id = a.latest_version_id
+		LEFT JOIN version_models vm ON vm.version_id = v.id
 		LEFT JOIN lint_reports l ON l.version_id = v.id
 		WHERE ($1 = '' OR a.owner = $1)
 		  AND ($2 = '' OR a.kind = $2)
 		  AND ($3 = '' OR a.lifecycle = $3)
 		  AND ($4 = '' OR COALESCE(a.meta->'tags', '[]') ? $4)
-		  AND ($5 = '' OR a.id ILIKE '%' || $5 || '%' OR COALESCE(a.meta->>'title', '') ILIKE '%' || $5 || '%')
+		  AND ($5 = '' OR a.id ILIKE '%' || $5 || '%' OR `+titleSQL+` ILIKE '%' || $5 || '%')
 		ORDER BY CASE a.lifecycle WHEN 'deprecated' THEN 1 WHEN 'retired' THEN 2 ELSE 0 END, a.id`,
 		f.Team, f.Kind, f.Lifecycle, f.Tag, escapeLike(f.Q))
 	if err != nil {
@@ -99,6 +104,14 @@ type APIDetail struct {
 	Meta
 }
 
+// Name is the API's title, or its id if it has none.
+func (d *APIDetail) Name() string {
+	if d.Title != "" {
+		return d.Title
+	}
+	return d.ID
+}
+
 // Meta is the descriptor metadata a push stores on the API (apis.meta).
 type Meta struct {
 	Title         string        `json:"title"`
@@ -114,10 +127,12 @@ func (s *Store) APIDetail(ctx context.Context, id string) (*APIDetail, error) {
 	var d APIDetail
 	err := s.pool.QueryRow(ctx, `
 		SELECT a.id, a.kind, a.owner, a.lifecycle, r.ci_subject, COALESCE(a.latest_version_id, 0),
-		       COALESCE(v.semver, ''), a.sunset, a.meta
+		       COALESCE(v.semver, ''), a.sunset, a.meta, `+titleSQL+`
 		FROM apis a JOIN repos r ON r.id = a.repo_id LEFT JOIN versions v ON v.id = a.latest_version_id
+		LEFT JOIN version_models vm ON vm.version_id = v.id
 		WHERE a.id = $1`, id).
-		Scan(&d.ID, &d.Kind, &d.Owner, &d.Lifecycle, &d.Repo, &d.LatestVersionID, &d.LatestSemver, &d.Sunset, &d.Meta)
+		Scan(&d.ID, &d.Kind, &d.Owner, &d.Lifecycle, &d.Repo, &d.LatestVersionID, &d.LatestSemver, &d.Sunset, &d.Meta,
+			&d.Title) // after Meta, whose title it replaces
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

@@ -124,7 +124,7 @@ func (s *Server) loadAPI(w http.ResponseWriter, r *http.Request, u *User, semver
 }
 
 func (s *Server) renderAPI(w http.ResponseWriter, r *http.Request, u *User, d *apiData) {
-	p := page{Title: d.API.ID, Nav: "apis", User: u, Data: d}
+	p := page{Title: d.API.Name(), Nav: "apis", User: u, Data: d}
 	if htmx(r) {
 		s.renderBlock(w, r, http.StatusOK, "api", "api-body", p)
 		return
