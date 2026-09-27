@@ -62,7 +62,7 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 31 | `ac98731` | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
 | 32 | `ade16db` | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
 | 33 | `397af16` | M4: onboarding guide `docs/guide/onboarding.md` |
-| 34 | | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
+| 34 | `3c8c7c4` | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
 
 ### J1/J2 against a portal
 ```sh
