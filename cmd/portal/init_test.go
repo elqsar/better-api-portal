@@ -62,3 +62,33 @@ func TestInit(t *testing.T) {
 		t.Errorf("--force: %v", err)
 	}
 }
+
+func TestInitEventsFrom(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "orders-service")
+	if err := os.CopyFS(root, os.DirFS(example)); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(filepath.Join(root, "portal.yaml"))
+	os.Remove(filepath.Join(root, "api/events.yaml"))
+
+	out, err := run("init", "--root", root, "--owner", "team-orders", "--events-from", filepath.Join(root, "api/schemas"),
+		"--type-prefix", "com.acme.orders.", "--kafka-topic", "orders.events")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, s := range []string{"wrote " + filepath.Join(root, "api/events.yaml"), "orders-events 1.0.0: score", "0 error(s)"} {
+		if !strings.Contains(out, s) {
+			t.Errorf("output lacks %q:\n%s", s, out)
+		}
+	}
+	desc, _ := os.ReadFile(filepath.Join(root, "portal.yaml"))
+	if !strings.Contains(string(desc), "spec: api/events.yaml") {
+		t.Errorf("portal.yaml:\n%s", desc)
+	}
+
+	// Outside the root.
+	if _, err := run("init", "--root", root, "--owner", "team-orders", "--events-from", filepath.Join(root, "api/schemas"),
+		"--events-out", filepath.Join(t.TempDir(), "events.yaml"), "--stdout"); err == nil || !strings.Contains(err.Error(), "inside the repository root") {
+		t.Errorf("outside the root: %v", err)
+	}
+}

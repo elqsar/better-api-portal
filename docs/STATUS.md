@@ -57,6 +57,7 @@ specs are available yet.
 | 29 | `90ac5ba` | Compatible payload changes name their fields (`compat.FieldChanges`) |
 | 30 | `a439b02` | API list and page titles fall back to the latest spec's title |
 | 31 | `ac98731` | M4: `portal init` (detect specs, propose ids, write `portal.yaml`, check it) and `--ci github` from the embedded workflow template |
+| 32 | | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
 
 ### J1/J2 against a portal
 ```sh
@@ -355,6 +356,28 @@ openapi, compat).
     `check` on it without a config and prints next steps. Exit 1 when the
     check has errors. Nothing is overwritten without `--force`; `--stdout`
     only prints.
+- **`--events-from DIR`** (`initkit.Events`) drafts an event catalogue from
+  existing payload schemas (the migration path from CloudEvents + JSON
+  Schema).
+  - One `produces` message per JSON Schema in DIR (a file with `$schema`,
+    `type` or `properties`, and not a spec) that no other schema there
+    `$ref`s, so shared parts like `money.json` aren't messages.
+  - The type is the schema's `$id` when that is already a name (no URL
+    scheme, has a dot). Otherwise it is `--type-prefix` plus the file name
+    split into words (dashes, underscores, camelCase) plus `.v<major>`. The
+    major comes from the file name (`.v1`) or a URL `$id` (`…/v2`), else 1.
+    On the example's schemas this gives exactly the example's types
+    (tested), and the draft parses cleanly.
+  - `summary` is the schema description's first line, else a TODO;
+    `--kafka-topic`/`--nats-subject` set `defaults.bindings`, else a
+    commented TODO (and `check` reports the missing binding as an error).
+  - It goes next to DIR (`--events-out` overrides it, but it must stay
+    inside the root), and portal.yaml includes it as `<service>-events`.
+  - **Inventory (Q6):** stderr lists each type, where its name came from,
+    and which fail `ce-type-format` or the prefix, with the advice to publish
+    a new type alongside rather than rename one producers send. The ack list
+    in the roadmap's Q6 default doesn't apply: acks accept breaking changes,
+    not lint errors.
 - **CI template:** `internal/initkit/templates/github-actions.yml` is
   embedded; `Workflow` replaces the example's `PORTAL_URL` and
   `PORTAL_CLI_VERSION`. `TestWorkflowExample` keeps

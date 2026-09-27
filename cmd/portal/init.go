@@ -3,14 +3,18 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/semver"
 
 	"github.com/elqsar/better-api-portal/internal/check"
+	"github.com/elqsar/better-api-portal/internal/descriptor"
 	"github.com/elqsar/better-api-portal/internal/initkit"
 	"github.com/elqsar/better-api-portal/internal/model"
 	"github.com/elqsar/better-api-portal/internal/report"
@@ -27,6 +31,9 @@ func initCmd() *cobra.Command {
 		ci         string
 		portalURL  string
 		cliVersion string
+		eventsFrom string
+		eventsOut  string
+		events     initkit.EventsOptions
 	)
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -41,6 +48,15 @@ title instead. Ids are permanent once published, so review them.
 
 --ci github also writes ` + initkit.WorkflowPath + `, which checks pull
 requests and publishes from main and tags; it needs --portal-url.
+
+--events-from DIR drafts an event catalogue from existing CloudEvents
+payload schemas: one produced message per JSON Schema in DIR that no other
+schema there refers to. A schema's $id that is already a type is kept;
+otherwise the type is --type-prefix plus the file name (order-created.v1.json
+→ <prefix>order.created.v1). The catalogue goes next to DIR (--events-out
+overrides it) and is added to portal.yaml. --kafka-topic or --nats-subject
+sets its default binding. It lists the types that break the portal's naming
+rules.
 
 Nothing is overwritten without --force; --stdout prints the descriptor
 instead of writing it. Guide: ` + onboardingGuide,
@@ -64,6 +80,9 @@ instead of writing it. Guide: ` + onboardingGuide,
 			}
 			w, errw := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
+			if opts.Service == "" {
+				opts.Service = initkit.ServiceName(root)
+			}
 			specs, unsupported, err := initkit.Detect(root)
 			if err != nil {
 				return err
@@ -71,22 +90,51 @@ instead of writing it. Guide: ` + onboardingGuide,
 			for _, f := range unsupported {
 				fmt.Fprintf(errw, "skipped %s: %s\n", f.File, f.Message)
 			}
-			if len(specs) == 0 {
-				return fmt.Errorf("no OpenAPI 3, AsyncAPI 3 or event catalogue file found under %s; to describe existing CloudEvents with JSON Schemas, see %s", root, onboardingGuide)
+
+			var draft []byte
+			if eventsFrom != "" {
+				if eventsOut == "" {
+					eventsOut = filepath.Join(filepath.Dir(filepath.Clean(eventsFrom)), "events.yaml")
+				}
+				rel, err := filepath.Rel(root, eventsOut)
+				if err != nil || !filepath.IsLocal(rel) {
+					return fmt.Errorf("the event catalogue %s must be inside the repository root %s", eventsOut, root)
+				}
+				if events.Title == "" {
+					events.Title = strings.ToUpper(opts.Service[:1]) + opts.Service[1:] + " events"
+				}
+				var types []initkit.EventType
+				if draft, types, err = initkit.Events(eventsFrom, eventsOut, events); err != nil {
+					return err
+				}
+				printTypes(errw, types, events.Prefix)
+				rel = filepath.ToSlash(rel)
+				specs = slices.DeleteFunc(specs, func(s initkit.Spec) bool { return s.Path == rel })
+				specs = append(specs, initkit.Spec{Path: rel, Kind: descriptor.KindCloudEvents, Title: events.Title})
 			}
-			if opts.Service == "" {
-				opts.Service = initkit.ServiceName(root)
+			if len(specs) == 0 {
+				return fmt.Errorf("no OpenAPI 3, AsyncAPI 3 or event catalogue file found under %s; for existing CloudEvents with JSON Schemas, use --events-from (see %s)", root, onboardingGuide)
 			}
 			desc := initkit.Descriptor(opts, initkit.Propose(specs, opts.Service))
 			if stdout {
+				if draft != nil {
+					fmt.Fprintf(w, "# %s\n%s\n# portal.yaml\n", eventsOut, draft)
+				}
 				_, err := w.Write(desc)
 				return err
 			}
 
 			descPath := filepath.Join(root, "portal.yaml")
 			files := map[string][]byte{descPath: desc}
+			order := []string{descPath}
+			if draft != nil {
+				files[eventsOut] = draft
+				order = append([]string{eventsOut}, order...)
+			}
 			if ci == "github" {
-				files[filepath.Join(root, initkit.WorkflowPath)] = initkit.Workflow(portalURL, cliVersion)
+				p := filepath.Join(root, initkit.WorkflowPath)
+				files[p] = initkit.Workflow(portalURL, cliVersion)
+				order = append(order, p)
 			}
 			for p := range files {
 				if _, err := os.Stat(p); err == nil && !force {
@@ -95,11 +143,8 @@ instead of writing it. Guide: ` + onboardingGuide,
 					return err
 				}
 			}
-			for _, p := range []string{descPath, filepath.Join(root, initkit.WorkflowPath)} {
-				b, ok := files[p]
-				if !ok {
-					continue
-				}
+			for _, p := range order {
+				b := files[p]
 				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 					return err
 				}
@@ -142,6 +187,37 @@ instead of writing it. Guide: ` + onboardingGuide,
 	cmd.Flags().BoolVar(&stdout, "stdout", false, "print the descriptor instead of writing it")
 	cmd.Flags().StringVar(&ci, "ci", "", "also write the CI workflow: github")
 	cmd.Flags().StringVar(&portalURL, "portal-url", "", "the portal's URL, for the CI workflow")
+	cmd.Flags().StringVar(&eventsFrom, "events-from", "", "draft an event catalogue from the JSON Schemas in this directory")
+	cmd.Flags().StringVar(&eventsOut, "events-out", "", "where the drafted catalogue goes (default: events.yaml next to --events-from)")
+	cmd.Flags().StringVar(&events.Prefix, "type-prefix", "", "event type prefix for types named from files, e.g. com.acme.orders.")
+	cmd.Flags().StringVar(&events.Title, "events-title", "", "the drafted catalogue's title (default: \"<service> events\")")
+	cmd.Flags().StringVar(&events.KafkaTopic, "kafka-topic", "", "the drafted catalogue's default Kafka topic")
+	cmd.Flags().StringVar(&events.NATSSubject, "nats-subject", "", "the drafted catalogue's default NATS subject")
 	cmd.Flags().StringVar(&cliVersion, "cli-version", "", "the portal CLI release the workflow installs (default: this binary's)")
 	return cmd
+}
+
+// printTypes is the inventory of drafted event types (Q6): where each name
+// came from and which break the portal's rules.
+func printTypes(w io.Writer, types []initkit.EventType, prefix string) {
+	fmt.Fprintln(w, "Event types:")
+	bad := 0
+	for _, t := range types {
+		from := "named from " + t.Schema
+		if t.FromID {
+			from = "$id of " + t.Schema
+		}
+		fmt.Fprintf(w, "  %s (%s)\n", t.Type, from)
+		for _, p := range t.Problems {
+			fmt.Fprintf(w, "    ✗ %s\n", p)
+			bad++
+		}
+	}
+	if bad > 0 {
+		fmt.Fprintln(w, "Types that break the rules fail portal check. A type producers already send can't just be renamed:")
+		fmt.Fprintln(w, "publish the new name as a new type alongside it, move consumers over, then deprecate the old one.")
+	}
+	if prefix == "" {
+		fmt.Fprintln(w, "No --type-prefix: types named from files have no organisation prefix.")
+	}
 }

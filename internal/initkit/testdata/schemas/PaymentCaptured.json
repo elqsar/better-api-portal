@@ -1,0 +1,2 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema", "description": "A payment was captured.\nMore text.", "type": "object",
+ "properties": {"amount": {"$ref": "common/money.json"}}}
