@@ -180,8 +180,24 @@ func (d *eventDiff) payload(om, nm model.Message) error {
 		return err
 	}
 	if !sameConstraints {
-		d.addNew(model.Change{RuleID: "ce-payload-changed", Kind: "changed", Target: "schema-field", Type: nm.Key,
-			Impact: model.ImpactAdditive, Message: nm.Key + ": payload schema changed compatibly (" + string(mode) + ")"}, ptr)
+		// Name the fields where the walk can; otherwise (constraints,
+		// combinators) one line says the change is compatible.
+		fields, err := compat.FieldChanges(oldS, newS)
+		if err != nil {
+			return err
+		}
+		for _, f := range fields {
+			msg := fmt.Sprintf("%s payload %s %s", nm.Key, f.Path, f.What)
+			if f.Detail != "" {
+				msg += " (" + f.Detail + ")"
+			}
+			d.addNew(model.Change{RuleID: "ce-payload-changed", Kind: "changed", Target: "schema-field", Type: nm.Key,
+				Field: f.Path, Impact: model.ImpactAdditive, Message: msg + ", compatible (" + string(mode) + ")"}, ptr)
+		}
+		if len(fields) == 0 {
+			d.addNew(model.Change{RuleID: "ce-payload-changed", Kind: "changed", Target: "schema-field", Type: nm.Key,
+				Impact: model.ImpactAdditive, Message: nm.Key + ": payload schema changed compatibly (" + string(mode) + ")"}, ptr)
+		}
 		return nil
 	}
 	sameDocs, err := same(true)

@@ -54,6 +54,7 @@ specs are available yet.
 | 26 | `5b39805` | CLI distribution: module `github.com/elqsar/better-api-portal`, `portal version`, `task release` (static tar.gz + SHA256SUMS), `Containerfile` + `task image`; the example workflow installs a pinned release |
 | 27 | `c76fb54` | An `unchanged` push updates the API's metadata (descriptor-only changes need no version bump) |
 | 28 | `88cd609` | Consumers grouped by service (repo) on the event page and the dependencies tab |
+| 29 | | Compatible payload changes name their fields (`compat.FieldChanges`) |
 
 ### J1/J2 against a portal
 ```sh
@@ -141,6 +142,16 @@ openapi, compat).
 - **Change impact:** a compatible payload change is *additive*;
   annotation-only changes are *docs*. Extension requirement changes depend on
   the role (produces vs receives).
+- **Compatible payload changes name their fields** (after M3):
+  `compat.FieldChanges` walks `properties`, `required`, `enum` and `items`
+  through `$ref`s (16 levels, cycles cut) and reports properties added
+  (optional/required), removed, now required/optional, and enum values
+  added/removed. Each becomes one additive `ce-payload-changed` with `Field`
+  set ("…v1 payload /channel added (optional), compatible (FORWARD)"). A
+  change the walk can't describe (constraints, combinators) keeps the one
+  generic line. The messages, and so the ids, of compatible changes
+  differ from those stored before; they're additive, so no ack refers to
+  them.
 - **Change ids** are `BRK-CE-` plus 6 hex digits of sha256(rule, type, field,
   message), so they're stable for identical input.
 - **A broken baseline** is exit 2 (it can't run), not a finding.
@@ -651,9 +662,6 @@ Next in the code: M4, the onboarding kit (CI templates, `portal init`, a
 migration guide).
 
 Found by the journeys, worth deciding before M4:
-- A compatible payload change is one line ("payload schema changed
-  compatibly"), without the fields added; J5 asks for schema fields.
-  Breaking changes do name them.
 - The API page's heading falls back to the id, not the spec's title
   (search uses the spec's).
 
