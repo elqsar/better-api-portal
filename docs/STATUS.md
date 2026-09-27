@@ -53,7 +53,7 @@ specs are available yet.
 | 25 | `deb7693` | Server rules `ce-type-unique` (error) and `ce-topic-single-owner` (warn) in push and `--dry-run`, against the portal and the rest of the push; they count in the score |
 | 26 | `5b39805` | CLI distribution: module `github.com/elqsar/better-api-portal`, `portal version`, `task release` (static tar.gz + SHA256SUMS), `Containerfile` + `task image`; the example workflow installs a pinned release |
 | 27 | `c76fb54` | An `unchanged` push updates the API's metadata (descriptor-only changes need no version bump) |
-| 28 | | Consumers grouped by service (repo) on the event page and the dependencies tab |
+| 28 | `88cd609` | Consumers grouped by service (repo) on the event page and the dependencies tab |
 
 ### J1/J2 against a portal
 ```sh
