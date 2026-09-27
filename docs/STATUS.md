@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27 · Last commit: `deb7693`
+Last updated: 2026-09-27 · Last commit: `5b39805`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -51,6 +51,7 @@ specs are available yet.
 | 23 | `bb50c06` | Diff page `/apis/{id}/diff`: contract changes between any two versions (`check.DiffBundles`), raw per-file diff as pushed or canonical JSON, folds expanded by htmx; compare form on the versions tab |
 | 24 | `4659940` | J3–J5 acceptance tests (`TestJourney*`) with golden HTML of each step's `<main>`, `payments-service` fixture, `task test:journeys`; removed event types aren't linked |
 | 25 | `deb7693` | Server rules `ce-type-unique` (error) and `ce-topic-single-owner` (warn) in push and `--dry-run`, against the portal and the rest of the push; they count in the score |
+| 26 | `5b39805` | CLI distribution: module `github.com/elqsar/better-api-portal`, `portal version`, `task release` (static tar.gz + SHA256SUMS), `Containerfile` + `task image`; the example workflow installs a pinned release |
 
 ### J1/J2 against a portal
 ```sh
@@ -105,7 +106,8 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
 | `internal/store` | Postgres (pgx) repository; embedded goose migrations behind an advisory lock; `Record` stores a push, and indexes a published one, in one transaction; readers `Model`, `MessageRoles`, `TypeConsumers`, `Dependencies`, `Search`; `storetest.SeedAPIs` makes synthetic APIs |
 
-Tasks: `task build | test | vet | check:examples` (Taskfile, not Make).
+Tasks: `task build | test | vet | check:examples` (Taskfile, not Make);
+`task release -- v0.1.0` and `task image -- v0.1.0` (see "Decisions (distribution)").
 Postgres: `task dev:db` (podman-compose, port 55432), then `task migrate`,
 `task psql`, `task run` (serve on http://localhost:8080 with `--dev-login`: the
 stub sign-in page lets you pick a name and groups), `task test:integration`
@@ -269,6 +271,44 @@ openapi, compat).
   `cli:<os user>`. `httpapi.NoAuth` is gone; `serve` always runs `auth.CI`.
 - go-oidc, go-jose and oauth2 are 3 new modules; the binary grows about
   1.5 MB (94.2 → 95.7 MB).
+
+## Decisions (distribution)
+
+- **Module path** `github.com/elqsar/better-api-portal` (was
+  `better-api-portal`), so `go install
+  github.com/elqsar/better-api-portal/cmd/portal@vX` works once the repo
+  is pushed there and public (or `GOPRIVATE` is set).
+- **`portal version`** and `--version`: the `-X main.version` set by
+  release builds, else the module version Go stamps (a pseudo-version
+  like `v0.0.0-…-8c59a9b49a65+dirty` from a checkout, the tag after `go
+  install …@vX`), plus Go version, platform and commit when known.
+- **`task release -- vX`** (default `git describe`): `CGO_ENABLED=0`,
+  `-trimpath -s -w`, linux and darwin × amd64 and arm64, each
+  `dist/portal_<v>_<os>_<arch>.tar.gz` with the binary and `LICENSES.txt`
+  (the vendored htmx and Scalar notices), plus `dist/SHA256SUMS`. About
+  19 MB per archive. Publishing is manual: `gh release create vX dist/*`.
+  Windows isn't built (no CI runner needs it yet).
+- **Image** (`Containerfile`, `task image -- vX`): `golang:1.26` build
+  stage to `gcr.io/distroless/static-debian12:nonroot` (CA certificates
+  for OIDC, no shell, non-root), 69.6 MB. Entrypoint `/portal`, default
+  command `serve`, so the same image runs the server or `portal push` in
+  CI. `.containerignore` leaves out `.git`, `bin`, `dist`; the version
+  comes from `--build-arg VERSION` (`-buildvcs=false`).
+  - The default podman machine (3.7 GiB) killed the compiler at full
+    parallelism (in vacuum's packages, after 30 min of thrashing), so
+    `task image` passes `--build-arg GOFLAGS=-p=2`; the Containerfile
+    also mounts a Go build cache. CI runners with more memory can leave
+    `GOFLAGS` empty.
+  - Checked: `version`, `check` on the mounted example, and `serve`
+    against the dev database (`/readyz` 200, UI 503 without
+    `oidc.issuer`, unauthenticated push 401).
+- **Example workflow:** `PORTAL_CLI_VERSION` pinned in `env`; the job
+  downloads the release archive for `$RUNNER_ARCH` and verifies it
+  against `SHA256SUMS` before putting it on `PATH`. The install script
+  was run against a local `dist/` over `file://`. `go install` and the
+  image are given as alternatives in a comment.
+- There is no project `LICENSE` yet; the archives carry only third-party
+  notices. Go module licenses aren't collected into the archives either.
 
 ## Decisions (push client)
 
@@ -583,12 +623,15 @@ deploy a portal and have a pilot service push from CI.
 portal that engineers actually use.
 
 The server rules `ce-type-unique` and `ce-topic-single-owner` are done
-(row 25).
+(row 25), and so is CLI distribution (row 26).
 
-Next: the M2 pilot's blocker, CLI distribution (a `go install`-able
-module path, a release task and a Containerfile, so the example workflow
-stops needing `vars.PORTAL_CLI_URL`). After that M4, the onboarding kit
-(CI templates, `portal init`, a migration guide).
+For the M2 pilot, what's left is outside the code: push the repo to
+`github.com/elqsar/better-api-portal`, cut `v0.1.0` (`task release -- v0.1.0`,
+then `gh release create`), deploy the image, and point a service's
+workflow at it.
+
+Next in the code: M4, the onboarding kit (CI templates, `portal init`, a
+migration guide).
 
 Found by the journeys, worth deciding before M4:
 - `consumes` is per descriptor, so every API of the consuming service is
@@ -606,10 +649,9 @@ Found by the journeys, worth deciding before M4:
 
 - Real-spec tuning (Q7: `oneOf` usage, Q6: type prefix) is pending access
   to company specs; scheduled for M5.
-- **CLI distribution:** there's no release, image or download for the
-  `portal` binary; the example workflow installs it from a placeholder
-  `vars.PORTAL_CLI_URL`. The module path (`better-api-portal`) isn't
-  `go install`-able either. The image and Helm chart are M5.
+- **Distribution:** nothing is published yet (the repo has no remote);
+  releases are built locally and uploaded by hand, with no CI release
+  workflow, signing or SBOM. No project `LICENSE`. The Helm chart is M5.
 - The GitHub OIDC path is tested against a fake issuer only, not a real
   Actions run. Pull requests from forks get no ID token, so they can't use
   `--dry-run` or `--baseline-from`.
