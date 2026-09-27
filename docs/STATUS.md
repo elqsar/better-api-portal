@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27 · Last commit: `4659940`
+Last updated: 2026-09-27 · Last commit: `deb7693`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -50,6 +50,7 @@ specs are available yet.
 | 22 | `c09b395` | Search `/search`: full text + title trigrams, grouped by API, deprecated ranked lower, retired hidden; top-bar box; 500-API latency test, `task bench:search` |
 | 23 | `bb50c06` | Diff page `/apis/{id}/diff`: contract changes between any two versions (`check.DiffBundles`), raw per-file diff as pushed or canonical JSON, folds expanded by htmx; compare form on the versions tab |
 | 24 | `4659940` | J3–J5 acceptance tests (`TestJourney*`) with golden HTML of each step's `<main>`, `payments-service` fixture, `task test:journeys`; removed event types aren't linked |
+| 25 | `deb7693` | Server rules `ce-type-unique` (error) and `ce-topic-single-owner` (warn) in push and `--dry-run`, against the portal and the rest of the push; they count in the score |
 
 ### J1/J2 against a portal
 ```sh
@@ -214,6 +215,28 @@ openapi, compat).
   - `descriptor-broker-unknown` (warn): an environment names a broker
     that isn't in the configuration. Checked by `check --config` too, and
     skipped when the configuration has no brokers.
+  - `ce-type-unique` (error) and `ce-topic-single-owner` (warn), server
+    only (`httpapi/rules.go`, "portal rules"). Each pushed CloudEvents API
+    is compared with every API's latest version (`store.TypeDeclarations`,
+    `store.TopicProducers`, one query each per push) and with the other
+    APIs in the push; APIs claimed by another repo are skipped (rejected
+    anyway).
+    - `ce-type-unique`: any other API declaring the type, whatever the
+      role, is an error, one finding per other API at the message's
+      pointer and line. The message suggests `consumes` in `portal.yaml`,
+      the likely mistake. It is strict: a stored API's latest version
+      counts even if this push drops the type from it, so moving a type
+      between APIs is two pushes. Retired APIs keep their types (the
+      90-day release needs a retirement date, which isn't stored).
+    - `ce-topic-single-owner`: per API and topic (protocol + address),
+      at the first `produces` message bound to it, when an API of another
+      owner team (API-level `owner` counts) produces there. Stored rows of
+      APIs in this push are replaced by what's pushed; retired APIs don't
+      produce.
+    - Both count in the pushed API's score (−10 and −2), like lint rules.
+    - `TestEventPage`'s duplicate declaration is now written to the
+      store directly, since a push can't make one; the banner stays for
+      data from before the rule.
 - **The bundle download** carries `X-Portal-Version`,
   `X-Portal-Content-Hash` and `X-Portal-Lifecycle`, so a check can use it as
   a baseline. It needs the same authentication as push, for now.
@@ -559,10 +582,13 @@ deploy a portal and have a pilot service push from CI.
 **M3** is code-complete (rows 17–24). Like M2, what remains is a deployed
 portal that engineers actually use.
 
-Next, while the index rows are fresh: the server rules `ce-type-unique`
-and `ce-topic-single-owner` in the push verdict, next to
-`consumes-unknown-api` (the event page already shows `ce-type-unique`
-conflicts).
+The server rules `ce-type-unique` and `ce-topic-single-owner` are done
+(row 25).
+
+Next: the M2 pilot's blocker, CLI distribution (a `go install`-able
+module path, a release task and a Containerfile, so the example workflow
+stops needing `vars.PORTAL_CLI_URL`). After that M4, the onboarding kit
+(CI templates, `portal init`, a migration guide).
 
 Found by the journeys, worth deciding before M4:
 - `consumes` is per descriptor, so every API of the consuming service is
@@ -575,13 +601,6 @@ Found by the journeys, worth deciding before M4:
 - The API page's heading falls back to the id, not the spec's title
   (search uses the spec's).
 
-Then, while the rows are fresh: the server rules `ce-type-unique` and
-`ce-topic-single-owner` in the push verdict, next to `consumes-unknown-api`
-(the event page already shows `ce-type-unique` conflicts).
-
-Parallel track, for M2's pilot: a `go install`-able module path, a release
-task and a Containerfile, so the example workflow stops needing
-`vars.PORTAL_CLI_URL` (see "Known gaps").
 
 ## Known gaps
 
@@ -610,9 +629,8 @@ task and a Containerfile, so the example workflow stops needing
   every changed region, which is fine, but a rewritten file shows in
   full.
 - AsyncAPI v3 isn't parsed (the kind is recognised and then skipped).
-- Rules that need the server aren't implemented yet: `ce-type-unique` and
-  `ce-topic-single-owner`. The rows they need (`messages`, `bindings`) exist
-  now.
+- Retired APIs never release their event types: 04-governance's 90-day
+  release needs a retirement date on `apis`, which isn't recorded.
 - Rejected versions aren't cleaned up after 30 days yet (needs the jobs
   table).
 - There are no rulesets from files, no severity overrides and no
