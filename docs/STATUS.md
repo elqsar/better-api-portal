@@ -54,7 +54,7 @@ specs are available yet.
 | 26 | `5b39805` | CLI distribution: module `github.com/elqsar/better-api-portal`, `portal version`, `task release` (static tar.gz + SHA256SUMS), `Containerfile` + `task image`; the example workflow installs a pinned release |
 | 27 | `c76fb54` | An `unchanged` push updates the API's metadata (descriptor-only changes need no version bump) |
 | 28 | `88cd609` | Consumers grouped by service (repo) on the event page and the dependencies tab |
-| 29 | | Compatible payload changes name their fields (`compat.FieldChanges`) |
+| 29 | `90ac5ba` | Compatible payload changes name their fields (`compat.FieldChanges`) |
 
 ### J1/J2 against a portal
 ```sh
