@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27 · Last commit: `bb50c06`
+Last updated: 2026-09-27 · Last commit: `4659940`
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -17,8 +17,9 @@ are bundled with a content hash. Reports come as text, JSON, SARIF and JUnit.
 `portal push`, `check --baseline-from`, an example workflow, and an
 end-to-end test of the CLI against a real portal. Its "done when" (a pilot
 service pushing from CI) still needs a deployed portal and a way to ship
-the CLI (see "Known gaps"). **M3: read UI** is under way: steps 1–7 (the index, the web
-skeleton with OIDC sign-in, the API list and pages, Scalar docs, the event page, search, the diff page) are done (see "Decisions (M3 UI)"). Tuning
+the CLI (see "Known gaps"). **M3: read UI** is code-complete: all eight steps are done (see "Decisions (M3 UI)"), and the J3–J5
+acceptance tests pass. Its "done when" also says engineers find APIs
+without asking, which needs a deployed portal, like M2's pilot. Tuning
 against real specs moves to M5, as the roadmap schedules it, because no real
 specs are available yet.
 
@@ -48,6 +49,7 @@ specs are available yet.
 | 21 | `7ebca18` | Event page `/events/{type}`: CE attributes, payload schema tree, examples, bindings with broker links, owner and consumers; `brokers` config, `descriptor-broker-unknown` |
 | 22 | `c09b395` | Search `/search`: full text + title trigrams, grouped by API, deprecated ranked lower, retired hidden; top-bar box; 500-API latency test, `task bench:search` |
 | 23 | `bb50c06` | Diff page `/apis/{id}/diff`: contract changes between any two versions (`check.DiffBundles`), raw per-file diff as pushed or canonical JSON, folds expanded by htmx; compare form on the versions tab |
+| 24 | `4659940` | J3–J5 acceptance tests (`TestJourney*`) with golden HTML of each step's `<main>`, `payments-service` fixture, `task test:journeys`; removed event types aren't linked |
 
 ### J1/J2 against a portal
 ```sh
@@ -482,10 +484,34 @@ be changed in M3's first commit to match.
     their text.
   - Linked from the versions tab (a compare form, and each "from X" in
     the Changes column) and the lint tab ("Compare the files").
+- **Acceptance tests (step 8, done):**
+  - `internal/web/journeys_integration_test.go`: one test per journey,
+    each step's page loaded as a signed-in user and checked for what the
+    journey names, then its `<main>` compared with
+    `testdata/journeys/*.html`. Only `<main>` is kept (the `<head>`
+    carries static-file hashes that change with every CSS edit); blank
+    lines and trailing spaces are dropped and push times replaced by
+    `<time>`. Checked stable over repeated runs. `task test:journeys --
+    -update` rewrites them; review the diff like any golden file.
+  - `testdata/payments-service` (team-payments, repo `acme/payments`) is
+    the second service the journeys need: `payments-http` with `POST
+    /orders/{orderId}/refunds` and `Refund` schemas for J3's "refund",
+    `payments-events` (`…payment.captured.v1`, `…refund.issued.v1`),
+    consuming `orders-events`' `order.created.v1` for J4. It was kept out
+    of `docs/spec/examples/` so the example's pinned hashes, scores and
+    parser goldens stay as they are. The type names use the payments
+    prefix, not J3's `com.acme.orders.refund.issued.v1`.
+  - The test site pushes as any repo (`pushDir(repo, dir, edits…)`, one
+    static token per repo).
+  - J5 publishes a major (2.0.0) that removes a type (breaking), adds a
+    payload field (additive) and rewords a summary (docs). Found and
+    fixed: a removed message type linked to its event page, which is a
+    404 once nothing declares it.
+  - J3's latency target stays with `TestSearchLatency500`.
 - **Commit order:** (1) migration + indexing + `reindex` (done); (2) `internal/web`
   skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page (done);
   (6) search with a 500-API benchmark (done); (7) diff page (done); (8) J3–J5 acceptance
-  tests with golden HTML.
+  tests with golden HTML (done).
 
 ## Decisions (store)
 
@@ -530,10 +556,24 @@ be changed in M3's first commit to match.
 **M2** is code-complete (table rows 11–16). What remains is operational:
 deploy a portal and have a pilot service push from CI.
 
-**M3**, one commit per step, in the order under "Decisions (M3 UI)". Steps 1–7
-are done. Next is step 8: J3–J5 acceptance tests with golden HTML (find an
-API, understand an event, compare versions), which closes M3's "done
-when" apart from tuning against real specs (M5).
+**M3** is code-complete (rows 17–24). Like M2, what remains is a deployed
+portal that engineers actually use.
+
+Next, while the index rows are fresh: the server rules `ce-type-unique`
+and `ce-topic-single-owner` in the push verdict, next to
+`consumes-unknown-api` (the event page already shows `ce-type-unique`
+conflicts).
+
+Found by the journeys, worth deciding before M4:
+- `consumes` is per descriptor, so every API of the consuming service is
+  listed as a consumer: J4's "Consumed by" shows `payments-http` next to
+  `payments-events`. Options: an optional per-API `consumes`, or show
+  the service (repo) rather than each API.
+- A compatible payload change is one line ("payload schema changed
+  compatibly"), without the fields added; J5 asks for schema fields.
+  Breaking changes do name them.
+- The API page's heading falls back to the id, not the spec's title
+  (search uses the spec's).
 
 Then, while the rows are fresh: the server rules `ce-type-unique` and
 `ce-topic-single-owner` in the push verdict, next to `consumes-unknown-api`
