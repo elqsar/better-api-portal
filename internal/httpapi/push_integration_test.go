@@ -23,6 +23,7 @@ import (
 	"github.com/elqsar/better-api-portal/internal/descriptor"
 	"github.com/elqsar/better-api-portal/internal/httpapi"
 	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/store"
 	"github.com/elqsar/better-api-portal/internal/store/storetest"
 )
 
@@ -47,16 +48,24 @@ func (headerAuth) Authenticate(r *http.Request) (*httpapi.Identity, error) {
 
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	srv, _ := newServerStore(t)
+	return srv
+}
+
+// newServerStore is newServer, also returning its store.
+func newServerStore(t *testing.T) (*httptest.Server, *store.Store) {
+	t.Helper()
 	cfg, err := config.Load(filepath.Join(example, "../portal.config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg.Server.PublicURL = "https://portal.test"
-	s := &httpapi.Server{Store: storetest.New(t), Config: cfg, Auth: headerAuth{},
+	st := storetest.New(t)
+	s := &httpapi.Server{Store: st, Config: cfg, Auth: headerAuth{},
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, st
 }
 
 // checkout copies the example and applies edits, as a commit would.
@@ -496,5 +505,78 @@ func TestPushPortalRulesWithinPush(t *testing.T) {
 	}
 	if topic := findings(r, "ce-topic-single-owner"); len(topic) != 0 {
 		t.Errorf("same-team topic warned: %+v", topic)
+	}
+}
+
+func TestPushUnchangedUpdatesMetadata(t *testing.T) {
+	srv, st := newServerStore(t)
+	const repo = "acme/orders"
+	expect(t, push(t, srv, "/api/v1/push", repo, checkout(t), nil), "orders-http published", "orders-events published")
+
+	consumes := func() []string {
+		t.Helper()
+		deps, _, err := st.Dependencies(t.Context(), "orders-http")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, d := range deps {
+			out = append(out, d.To)
+		}
+		return out
+	}
+	updated := func(r *httpapi.PushResponse) []bool {
+		var out []bool
+		for _, a := range r.APIs {
+			out = append(out, a.MetadataUpdated)
+		}
+		return out
+	}
+	if got := consumes(); !slices.Equal(got, []string{"customers-http", "payments-events"}) {
+		t.Fatalf("consumes = %q", got)
+	}
+
+	// Only the descriptor changes: a new dependency, a new tag.
+	edited := checkout(t,
+		[3]string{"portal.yaml", "  - api: customers-http", "  - api: customers-http\n  - api: inventory-http"},
+		[3]string{"portal.yaml", "tags: [orders, checkout]", "tags: [orders, checkout, returns]"})
+	r := push(t, srv, "/api/v1/check", repo, edited, nil)
+	expect(t, r, "orders-http unchanged", "orders-events unchanged")
+	if got := updated(r); !slices.Equal(got, []bool{true, true}) {
+		t.Errorf("dry run: metadataUpdated = %v", got)
+	}
+	if got := consumes(); len(got) != 2 {
+		t.Errorf("the dry run stored consumes %q", got)
+	}
+
+	r = push(t, srv, "/api/v1/push", repo, edited, nil)
+	expect(t, r, "orders-http unchanged", "orders-events unchanged")
+	if got := updated(r); !slices.Equal(got, []bool{true, true}) {
+		t.Errorf("metadataUpdated = %v", got)
+	}
+	if got := consumes(); !slices.Equal(got, []string{"customers-http", "inventory-http", "payments-events"}) {
+		t.Errorf("consumes = %q", got)
+	}
+
+	// A retry changes nothing.
+	r = push(t, srv, "/api/v1/push", repo, edited, nil)
+	if got := updated(r); !slices.Equal(got, []bool{false, false}) {
+		t.Errorf("retry: metadataUpdated = %v", got)
+	}
+
+	// A newer version, then the old one again with the old descriptor (an
+	// old tag's rebuild): orders-http keeps the newer push's metadata,
+	// while orders-events, whose latest version it still is, takes it.
+	newer := checkout(t,
+		[3]string{"api/openapi.yaml", "version: 2.3.0", "version: 2.4.0"},
+		[3]string{"portal.yaml", "  - api: customers-http", "  - api: customers-http\n  - api: inventory-http"},
+		[3]string{"portal.yaml", "tags: [orders, checkout]", "tags: [orders, checkout, returns]"})
+	expect(t, push(t, srv, "/api/v1/push", repo, newer, nil), "orders-http published", "orders-events unchanged")
+	r = push(t, srv, "/api/v1/push", repo, checkout(t), nil)
+	if got := updated(r); !slices.Equal(got, []bool{false, true}) {
+		t.Errorf("old version: metadataUpdated = %v", got)
+	}
+	if got := consumes(); !slices.Equal(got, []string{"customers-http", "inventory-http", "payments-events"}) {
+		t.Errorf("an old version's push changed consumes to %q", got)
 	}
 }

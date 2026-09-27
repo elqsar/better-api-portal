@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27 · Last commit: `5b39805`
+Last updated: 2026-09-27
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -52,6 +52,7 @@ specs are available yet.
 | 24 | `4659940` | J3–J5 acceptance tests (`TestJourney*`) with golden HTML of each step's `<main>`, `payments-service` fixture, `task test:journeys`; removed event types aren't linked |
 | 25 | `deb7693` | Server rules `ce-type-unique` (error) and `ce-topic-single-owner` (warn) in push and `--dry-run`, against the portal and the rest of the push; they count in the score |
 | 26 | `5b39805` | CLI distribution: module `github.com/elqsar/better-api-portal`, `portal version`, `task release` (static tar.gz + SHA256SUMS), `Containerfile` + `task image`; the example workflow installs a pinned release |
+| 27 | | An `unchanged` push updates the API's metadata (descriptor-only changes need no version bump) |
 
 ### J1/J2 against a portal
 ```sh
@@ -239,6 +240,14 @@ openapi, compat).
     - `TestEventPage`'s duplicate declaration is now written to the
       store directly, since a push can't make one; the banner stays for
       data from before the rule.
+- **An `unchanged` push updates the metadata** (owner, lifecycle, sunset,
+  `meta`: links, tags, environments, consumes, …) when it has no errors and
+  its version is the API's latest, so a descriptor-only change needs no
+  version bump. A rebuilt old tag doesn't revert it. `store.UpdateMeta`
+  compares in SQL (`IS DISTINCT FROM`, jsonb equality), rewrites
+  `dependencies` and audits `push.meta-updated`. The result says
+  `"metadataUpdated": true` (also on `--dry-run`, which writes nothing),
+  and `portal push` prints "(metadata updated)".
 - **The bundle download** carries `X-Portal-Version`,
   `X-Portal-Content-Hash` and `X-Portal-Lifecycle`, so a check can use it as
   a baseline. It needs the same authentication as push, for now.
@@ -657,11 +666,10 @@ Found by the journeys, worth deciding before M4:
   `--dry-run` or `--baseline-from`.
 - `server.publicURL` unset means push results carry paths, not URLs.
 - `portal diff` doesn't take bundles yet, only spec files.
-- **An `unchanged` push doesn't update the API's metadata.** A push whose
-  version and hash are already published returns early, so a
-  descriptor-only change (`consumes`, links, lifecycle, environments)
-  reaches the portal only with the spec's next version. Seen while testing
-  the event page's consumers.
+- A descriptor-only change reaches `apis.meta` and `dependencies` (see
+  "Decisions (server)"), but not the search documents: `search_docs` keep the
+  title and tags of the version's own push until the next version or
+  `portal reindex`.
 - **Search:** no `GET /api/v1/search` yet (`/api/v1` takes CI credentials
   only; it comes with session reads there or the MCP server), and no
   filter for older versions. After an htmx search the page `<title>` keeps

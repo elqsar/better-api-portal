@@ -364,14 +364,7 @@ func claim(ctx context.Context, tx pgx.Tx, p Push) error {
 		}
 		return nil
 	}
-	meta := p.API.Meta
-	if meta == nil {
-		meta = map[string]any{}
-	}
-	var sunset *string
-	if p.API.Sunset != "" {
-		sunset = &p.API.Sunset
-	}
+	meta, sunset := p.API.columns()
 	tag, err := tx.Exec(ctx, `
 		INSERT INTO apis (id, kind, owner, lifecycle, sunset, repo_id, meta)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -387,6 +380,56 @@ func claim(ctx context.Context, tx pgx.Tx, p Push) error {
 		return ErrClaimed
 	}
 	return nil
+}
+
+// columns are the API's meta and sunset as stored: an empty map, and NULL
+// for no sunset.
+func (a API) columns() (map[string]any, *string) {
+	meta := a.Meta
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	if a.Sunset == "" {
+		return meta, nil
+	}
+	return meta, &a.Sunset
+}
+
+// UpdateMeta brings an API's metadata (owner, lifecycle, sunset, meta) up
+// to date with a push whose version is already published, and rewrites its
+// dependencies. Kind and claim are unchanged. It reports whether anything
+// differed; with apply false it only compares. It returns ErrClaimed if
+// another repo owns the API.
+func (s *Store) UpdateMeta(ctx context.Context, a API, repoID int64, actor string, apply bool) (bool, error) {
+	var changed bool
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		meta, sunset := a.columns()
+		var repo int64
+		err := tx.QueryRow(ctx, `
+			SELECT repo_id, (owner, lifecycle, sunset, meta) IS DISTINCT FROM ($2, $3, $4::date, $5::jsonb)
+			FROM apis WHERE id = $1 FOR UPDATE`,
+			a.ID, a.Owner, a.Lifecycle, sunset, meta).Scan(&repo, &changed)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return ErrUnclaimed
+		case err != nil:
+			return err
+		case repoID != 0 && repo != repoID:
+			return ErrClaimed
+		case !changed || !apply:
+			return nil
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE apis SET owner = $2, lifecycle = $3, sunset = $4, meta = $5 WHERE id = $1`,
+			a.ID, a.Owner, a.Lifecycle, sunset, meta); err != nil {
+			return err
+		}
+		if err := syncDependencies(ctx, tx, a.ID); err != nil {
+			return err
+		}
+		return audit(ctx, tx, actor, "push.meta-updated", a.ID, map[string]any{"meta": meta, "owner": a.Owner, "lifecycle": a.Lifecycle})
+	})
+	return changed, err
 }
 
 func audit(ctx context.Context, tx pgx.Tx, actor, action, target string, details any) error {

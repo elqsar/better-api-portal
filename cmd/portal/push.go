@@ -221,6 +221,9 @@ URL.`,
 				}
 				for _, a := range resp.APIs {
 					line := fmt.Sprintf("%s %s: %s", a.ID, a.Version, a.Status)
+					if a.MetadataUpdated {
+						line += " (metadata updated)"
+					}
 					if a.URL != "" {
 						line += "  " + a.URL
 					}

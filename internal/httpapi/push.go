@@ -59,6 +59,10 @@ type PushResult struct {
 	check.APIResult
 	Status string `json:"status"`
 	URL    string `json:"url,omitempty"`
+	// MetadataUpdated is set on an unchanged version whose descriptor
+	// metadata (owner, lifecycle, links, consumes, …) changed and was
+	// stored; on /check, that it would be.
+	MetadataUpdated bool `json:"metadataUpdated,omitempty"`
 }
 
 // pushRequest is a parsed push body.
@@ -258,8 +262,19 @@ func (s *Server) process(ctx context.Context, who *Identity, req *pushRequest, d
 		}
 		if existing != nil {
 			if existing.ContentHash == res.ContentHash {
-				out.Status = StatusUnchanged // a CI retry: nothing to do
+				// A CI retry, or a descriptor-only change, which updates
+				// the metadata. Only the latest version's push may, so an
+				// old tag rebuilt doesn't revert it.
+				out.Status = StatusUnchanged
 				out.URL = s.versionURL(api.ID, res.Version)
+				rec := stored[api.ID]
+				if !descErrors && !hasError(resp.Findings, api.ID) && rec != nil && rec.LatestVersionID == existing.ID {
+					updated, err := s.Store.UpdateMeta(ctx, apiMeta(&d, api), repoID, who.Actor, !dryRun)
+					if err != nil && !errors.Is(err, store.ErrClaimed) {
+						return nil, err
+					}
+					out.MetadataUpdated = updated && err == nil
+				}
 			} else {
 				reject("version-immutable", fmt.Sprintf("%s %s is already published with different content; bump the version", api.ID, res.Version))
 			}
