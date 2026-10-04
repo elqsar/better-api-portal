@@ -1,0 +1,23 @@
+# Acme API portal
+
+> The company's catalogue of HTTP APIs (OpenAPI) and events (CloudEvents): who owns each API, its contract, and who depends on it. Look contracts up here rather than guessing payloads or endpoints.
+
+Every page is Markdown. An API page lists its operations or event types, each with its own page that inlines the request, response or payload schema.
+
+- Search: https://portal.internal/search.md?q={words} (words, a quoted phrase, -word to exclude)
+- An API's latest version: https://portal.internal/apis/{api-id}.md
+- An event type: https://portal.internal/events/{type}.md
+
+## team-orders
+
+- [orders-events](https://portal.internal/apis/orders-events.md): `orders-events`, CloudEvents, 1.4.0, deprecated
+- [Orders API](https://portal.internal/apis/orders-http.md): `orders-http`, OpenAPI, 2.3.0
+
+## team-payments
+
+- [Payments API](https://portal.internal/apis/payments-http.md): `payments-http`, OpenAPI, 1.2.0. Payments and refunds. Idempotent writes.
+
+## Optional
+
+- [Every API of team-orders in one file](https://portal.internal/llms-full.txt?team=team-orders)
+- [Every API of team-payments in one file](https://portal.internal/llms-full.txt?team=team-payments)

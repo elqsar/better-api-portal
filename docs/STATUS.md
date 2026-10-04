@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-09-27
+Last updated: 2026-10-04
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -63,6 +63,7 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 32 | `ade16db` | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
 | 33 | `397af16` | M4: onboarding guide `docs/guide/onboarding.md` |
 | 34 | `3c8c7c4` | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
+| 35 | _uncommitted_ | Agents, step 1: `internal/schematree` (the payload tree, moved out of `web`), `internal/agentdoc` (model → Markdown: llms.txt, API, operation and event pages; golden tests) |
 
 ### J1/J2 against a portal
 ```sh
@@ -113,6 +114,8 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; `web/devoidc` is the `--dev-login` stub provider |
 | `internal/textdiff` | Line diff per file (go-udiff's `lcs`), both sides' line numbers, `Fold` for unchanged runs |
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
+| `internal/schematree` | JSON Schema → tree (`Node`) for the event page and agentdoc; depth and node limits |
+| `internal/agentdoc` | Markdown for AI agents: `Catalogue` (llms.txt), `APIPage` (`full` for llms-full.txt), `OperationPage`, `MessagePage`; `Load` parses a bundle with every document so refs resolve |
 | `internal/initkit` | `portal init`: `Detect` specs (via `descriptor.Sniff`), `Propose` ids, render `Descriptor` and the GitHub `Workflow` (embedded template) |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
@@ -683,6 +686,33 @@ be changed in M3's first commit to match.
   skeleton + login (done); (3) API list/page (done); (4) Scalar docs (done); (5) event page (done);
   (6) search with a 500-API benchmark (done); (7) diff page (done); (8) J3–J5 acceptance
   tests with golden HTML (done).
+
+## Decisions (agent docs)
+
+Plan: make the catalogue usable by coding agents. Step 1 (agentdoc) is done;
+next come Markdown routes + `/llms.txt`, read-only personal access tokens
+(`pat_`, separate from CI's `ptk_`), `portal mcp` + `/mcp`, and an AGENTS.md
+snippet from `portal init`.
+
+- **Markdown is the agent format**, not raw specs. Schemas are inlined as
+  field lists (`- \`amount\` (integer, required, Money): Minor units.
+  format: int64.`), which take fewer tokens than JSON and need no `$ref`
+  resolution. One schema stops at 200 lines with a count of the rest.
+- **One page per operation and event type**, so an agent reads only what it
+  needs. An API page is an index of them. `full` concatenates them, with
+  headings shifted down, for llms-full.txt (per team, because the whole
+  catalogue won't fit in a context).
+- Operations without an `operationId` are keyed `get-orders-orderId`
+  (`OperationKey`).
+- Responses that differ only by status are merged (`401, 404, 409: Error…`).
+- **OpenAPI schemas resolve through the entry file's whole document**
+  (`agentdoc.Load`), not `spec.Schemas`: component schemas are keyed by
+  pointer there, so their `#/components/...` refs didn't resolve, and inline
+  request/response schemas weren't in it at all. Parameter and response
+  descriptions and security schemes also come from the raw document,
+  because the model doesn't carry them.
+- agentdoc doesn't import the store: callers fill `agentdoc.API`/`Entry`.
+- Retired APIs are left out of llms.txt, as search hides them.
 
 ## Decisions (store)
 

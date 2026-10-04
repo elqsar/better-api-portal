@@ -1,4 +1,4 @@
-package web
+package schematree
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ func specOf(t *testing.T, docs map[string]string) *model.Spec {
 }
 
 // outline prints a tree one node per line, indented by depth.
-func outline(n *schemaNode, depth int, out *strings.Builder) {
+func outline(n *Node, depth int, out *strings.Builder) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s%s %s", strings.Repeat("  ", depth), n.Name, n.Type)
 	if n.Required {
@@ -52,7 +52,7 @@ func outline(n *schemaNode, depth int, out *strings.Builder) {
 
 func treeOutline(t *testing.T, docs map[string]string, payload string) string {
 	t.Helper()
-	tree, err := schemaTree(specOf(t, docs), payload)
+	tree, err := FromSpec(specOf(t, docs), payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestSchemaTreeLimits(t *testing.T) {
 		strings.Count(got, "\n") != maxTreeDepth+1 {
 		t.Errorf("tree:\n%s", got)
 	}
-	if _, err := schemaTree(specOf(t, nil), "nope.json"); err == nil {
+	if _, err := FromSpec(specOf(t, nil), "nope.json"); err == nil {
 		t.Error("a payload outside the bundle is an error")
 	}
 }

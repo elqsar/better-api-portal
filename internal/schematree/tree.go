@@ -1,4 +1,6 @@
-package web
+// Package schematree turns a JSON Schema into a tree for people and agents
+// to read: the event page's payload tree and the Markdown in agentdoc.
+package schematree
 
 import (
 	"encoding/json"
@@ -11,9 +13,9 @@ import (
 	"github.com/elqsar/better-api-portal/internal/model"
 )
 
-// schemaNode is one line of a payload schema rendered as a tree: a
-// property, an array's items, or a group such as "one of".
-type schemaNode struct {
+// Node is one line of a payload schema rendered as a tree: a property, an
+// array's items, or a group such as "one of".
+type Node struct {
 	Name string
 	// Label means Name describes the node's place ("items", "#1") rather
 	// than naming a property.
@@ -29,7 +31,7 @@ type schemaNode struct {
 	// Note explains why the node stops: a recursive ref, a ref that
 	// doesn't resolve, or the size limits.
 	Note     string
-	Children []*schemaNode
+	Children []*Node
 	Open     bool // expanded at first
 }
 
@@ -40,27 +42,32 @@ const (
 	openDepth    = 2 // levels expanded at first
 )
 
-type treeBuilder struct {
+type builder struct {
 	s     compat.Schema
 	nodes int
 }
 
-// schemaTree renders the payload schema at pointer payload of a spec
-// parsed with its schema documents.
-func schemaTree(spec *model.Spec, payload string) (*schemaNode, error) {
-	b := &treeBuilder{s: compat.FromSpec(spec, payload)}
+// FromSpec renders the payload schema at pointer payload of a spec parsed
+// with its schema documents.
+func FromSpec(spec *model.Spec, payload string) (*Node, error) {
+	return Build(compat.FromSpec(spec, payload))
+}
+
+// Build renders the schema at s's root.
+func Build(s compat.Schema) (*Node, error) {
+	b := &builder{s: s}
 	top, err := b.s.Top()
 	if err != nil {
 		return nil, err
 	}
-	root := &schemaNode{}
+	root := &Node{}
 	b.fill(root, top, nil, 0)
 	return root, nil
 }
 
 // fill describes the schema at into n. path holds the keys of the schemas
 // from the root to here, to spot recursion.
-func (b *treeBuilder) fill(n *schemaNode, at compat.Node, path []string, depth int) {
+func (b *builder) fill(n *Node, at compat.Node, path []string, depth int) {
 	b.nodes++
 	n.Open = depth < openDepth
 	// Follow refs. The referring schema's description wins: it's about this
@@ -123,8 +130,8 @@ func (b *treeBuilder) fill(n *schemaNode, at compat.Node, path []string, depth i
 		}
 	}
 
-	var kids []*schemaNode
-	add := func(c *schemaNode, v any, tokens ...string) {
+	var kids []*Node
+	add := func(c *Node, v any, tokens ...string) {
 		kids = append(kids, c)
 		if depth+1 >= maxTreeDepth || b.nodes >= maxTreeNodes {
 			c.Note = "not shown: the schema is too large to show in full"
@@ -142,17 +149,17 @@ func (b *treeBuilder) fill(n *schemaNode, at compat.Node, path []string, depth i
 			}
 		}
 		for _, name := range sortedKeys(props) {
-			add(&schemaNode{Name: name, Required: required[name]}, props[name], "properties", name)
+			add(&Node{Name: name, Required: required[name]}, props[name], "properties", name)
 		}
 	}
 	if pp, ok := m["patternProperties"].(map[string]any); ok {
 		for _, p := range sortedKeys(pp) {
-			add(&schemaNode{Name: "/" + p + "/", Label: true}, pp[p], "patternProperties", p)
+			add(&Node{Name: "/" + p + "/", Label: true}, pp[p], "patternProperties", p)
 		}
 	}
 	switch ap := m["additionalProperties"].(type) {
 	case map[string]any:
-		add(&schemaNode{Name: "other properties", Label: true}, ap, "additionalProperties")
+		add(&Node{Name: "other properties", Label: true}, ap, "additionalProperties")
 	case bool:
 		if !ap {
 			n.Facts = append(n.Facts, "no other properties")
@@ -165,20 +172,20 @@ func (b *treeBuilder) fill(n *schemaNode, at compat.Node, path []string, depth i
 		tuple, tupleKey = items, "items"
 	}
 	for i, it := range tuple {
-		add(&schemaNode{Name: "items[" + strconv.Itoa(i) + "]", Label: true}, it, tupleKey, strconv.Itoa(i))
+		add(&Node{Name: "items[" + strconv.Itoa(i) + "]", Label: true}, it, tupleKey, strconv.Itoa(i))
 	}
 	if items, ok := m["items"].(map[string]any); ok {
-		add(&schemaNode{Name: "items", Label: true}, items, "items")
+		add(&Node{Name: "items", Label: true}, items, "items")
 	}
 	for _, kw := range []struct{ key, label string }{{"allOf", "all of"}, {"oneOf", "one of"}, {"anyOf", "any of"}} {
 		opts, ok := m[kw.key].([]any)
 		if !ok {
 			continue
 		}
-		g := &schemaNode{Name: kw.label, Label: true, Group: true, Open: depth+1 < openDepth}
+		g := &Node{Name: kw.label, Label: true, Group: true, Open: depth+1 < openDepth}
 		kids = append(kids, g)
 		for i, o := range opts {
-			c := &schemaNode{Name: "#" + strconv.Itoa(i+1), Label: true}
+			c := &Node{Name: "#" + strconv.Itoa(i+1), Label: true}
 			g.Children = append(g.Children, c)
 			if depth+1 >= maxTreeDepth || b.nodes >= maxTreeNodes {
 				c.Note = "not shown: the schema is too large to show in full"
@@ -188,7 +195,7 @@ func (b *treeBuilder) fill(n *schemaNode, at compat.Node, path []string, depth i
 		}
 	}
 	if not, ok := m["not"]; ok {
-		add(&schemaNode{Name: "not", Label: true}, not, "not")
+		add(&Node{Name: "not", Label: true}, not, "not")
 	}
 	n.Children = kids
 }

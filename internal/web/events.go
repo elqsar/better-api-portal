@@ -8,6 +8,7 @@ import (
 
 	"github.com/elqsar/better-api-portal/internal/check"
 	"github.com/elqsar/better-api-portal/internal/model"
+	"github.com/elqsar/better-api-portal/internal/schematree"
 	"github.com/elqsar/better-api-portal/internal/store"
 )
 
@@ -23,7 +24,7 @@ type eventData struct {
 	// Consumers declare the type, or its whole API, in `consumes`.
 	Consumers []consumerRepo
 
-	Schema    *schemaNode
+	Schema    *schematree.Node
 	SchemaErr string
 	Examples  []exampleView
 	Bindings  []bindingView
@@ -126,7 +127,7 @@ func (s *Server) loadMessage(ctx context.Context, d *eventData) error {
 	}
 	full, err := s.parsedSpec(ctx, d.Owner.ContentHash)
 	if err == nil {
-		d.Schema, err = schemaTree(full, d.Message.Payload)
+		d.Schema, err = schematree.FromSpec(full, d.Message.Payload)
 	}
 	if err != nil {
 		s.Log.Error("payload schema", "type", d.Type, "api", d.Owner.APIID, "version", d.Owner.Semver, "err", err)
@@ -194,4 +195,13 @@ func byRepo(deps []store.Dependency) []consumerRepo {
 		}
 	}
 	return out
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }
