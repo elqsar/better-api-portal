@@ -26,6 +26,7 @@
   <div class="user">
     <span>{{.DisplayName}}</span>
     {{if .Admin}}<span class="badge admin">admin</span>{{end}}
+    <a href="/tokens" {{if eq $.Nav "tokens"}}aria-current="page"{{end}}>Tokens</a>
     <form method="post" action="/logout"><button class="link" type="submit">Sign out</button></form>
   </div>
   {{end}}

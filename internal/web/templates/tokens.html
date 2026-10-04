@@ -1,0 +1,46 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Personal access tokens</h1>
+<p>A token lets an AI agent or a script read the portal as you: <code>/llms.txt</code>, search, and every API,
+operation and event page as Markdown. Tokens can only read; they can't push, or manage tokens.</p>
+
+{{with $d.New}}
+<section class="banner ok" aria-live="polite">
+  <h2>Your new token: {{$d.NewLabel}}</h2>
+  <p>Copy it now. The portal keeps only its hash, so it can't show it again.</p>
+  <pre><code>{{.}}</code></pre>
+  <p>Try it:</p>
+  <pre><code>curl -H "Authorization: Bearer {{.}}" {{$d.BaseURL}}/llms.txt</code></pre>
+</section>
+{{end}}
+
+<h2>Create a token</h2>
+{{with $d.Error}}<p class="banner err" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/tokens" class="token-form">
+  <label>Name <input type="text" name="label" required maxlength="100" value="{{$d.Label}}" placeholder="e.g. Claude Code on my laptop"></label>
+  <label>Expires after
+    <select name="days">{{range $d.Lifetimes}}<option value="{{.}}">{{.}} days</option>{{end}}</select>
+  </label>
+  <button class="primary" type="submit">Create token</button>
+</form>
+
+<h2>Your tokens</h2>
+{{if $d.Tokens}}
+<table>
+  <thead><tr><th>Name</th><th>Created</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Tokens}}
+  <tr>
+    <td>{{.Label}}</td>
+    <td>{{date .CreatedAt}}</td>
+    <td>{{date .ExpiresAt}}</td>
+    <td>{{with .LastUsedAt}}{{date .}}{{else}}never{{end}}</td>
+    <td><form method="post" action="/tokens/{{.ID}}/revoke"><button class="link" type="submit">Revoke</button></form></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>You have no tokens.</p>
+{{end}}
+{{end}}

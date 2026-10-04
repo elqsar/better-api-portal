@@ -20,8 +20,10 @@ import (
 // agentdoc's output changes.
 const agentDocVersion = "1"
 
-// portalName heads llms.txt.
-const portalName = "API portal"
+// portalName heads llms.txt, as it heads the web pages.
+func (s *Server) portalName() string {
+	return strings.TrimSpace(s.Config.Org.Name + " API portal")
+}
 
 // maxFull caps /llms-full.txt; the APIs past it are listed with links.
 const maxFull = 512 << 10
@@ -93,7 +95,7 @@ func (s *Server) llmsTxt(w http.ResponseWriter, r *http.Request, u *User) {
 		entries = append(entries, agentdoc.Entry{ID: a.ID, Kind: a.Kind, Title: a.Title, Owner: a.Owner,
 			Lifecycle: a.Lifecycle, Version: a.Latest, Description: a.Description})
 	}
-	writeMarkdown(w, r, agentdoc.Catalogue(portalName, entries, s.urls()), "")
+	writeMarkdown(w, r, agentdoc.Catalogue(s.portalName(), entries, s.urls()), "")
 }
 
 // llmsFull concatenates the full pages of the APIs a team, tag or kind
@@ -107,7 +109,7 @@ func (s *Server) llmsFull(w http.ResponseWriter, r *http.Request, u *User) {
 		return
 	}
 	var b strings.Builder
-	title := portalName
+	title := s.portalName()
 	for _, part := range []string{f.Team, f.Tag, f.Kind} {
 		if part != "" {
 			title += ": " + part

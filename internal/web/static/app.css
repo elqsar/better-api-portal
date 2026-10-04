@@ -168,6 +168,13 @@ body {
   .banner { border: 1px solid; border-radius: var(--radius); padding: 0.75rem 1rem; margin: 1rem 0; }
   .banner.warn { border-color: var(--warn); }
   .banner.err { border-color: var(--err); }
+  .banner.ok { border-color: var(--ok); }
+  .banner pre { overflow-x: auto; }
+
+  /* Tokens */
+  .token-form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin: 0 0 1.5rem; }
+  .token-form label { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 500; }
+  .token-form input[type="text"] { width: 20rem; max-width: 100%; }
   .tabs { display: flex; gap: 1.25rem; border-bottom: 1px solid var(--border); margin: 1.5rem 0 1.25rem; }
   .tabs a { padding: 0.5rem 0; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
   .tabs a:hover { text-decoration: none; color: var(--text); }

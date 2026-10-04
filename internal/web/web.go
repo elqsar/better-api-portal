@@ -55,6 +55,11 @@ type Store interface {
 	TypeConsumers(ctx context.Context, msgType string, owners []string) ([]store.Dependency, error)
 	Search(ctx context.Context, q store.SearchQuery) ([]store.Hit, error)
 	Bundle(ctx context.Context, contentHash string) ([]byte, error)
+
+	CreateUserToken(ctx context.Context, hash []byte, sess store.Session, label string, expires time.Time) (int64, error)
+	UserTokenSession(ctx context.Context, hash []byte) (*store.Session, error)
+	UserTokens(ctx context.Context, subject string) ([]store.UserToken, error)
+	RevokeUserToken(ctx context.Context, id int64, sess store.Session) (bool, error)
 }
 
 // Options configure a Server.
@@ -217,6 +222,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /llms.txt", s.authed(s.llmsTxt))
 	mux.Handle("GET /llms-full.txt", s.authed(s.llmsFull))
 	mux.Handle("GET /search.md", s.authed(s.searchMarkdown))
+	mux.Handle("GET /tokens", s.authed(s.tokens))
+	mux.Handle("POST /tokens", s.authed(s.createToken))
+	mux.Handle("POST /tokens/{id}/revoke", s.authed(s.revokeToken))
 	mux.Handle("/", s.authed(func(w http.ResponseWriter, r *http.Request, u *User) {
 		s.error(w, r, u, http.StatusNotFound, "Not found", "There is no page at "+r.URL.Path+".")
 	}))
@@ -376,6 +384,9 @@ type User struct {
 	store.Session
 	Teams []string // slugs of the teams whose group they are in: they own those teams' APIs
 	Admin bool
+	// ViaToken: the request came with a personal access token, not a
+	// session.
+	ViaToken bool
 }
 
 // DisplayName is the name to show.

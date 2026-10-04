@@ -64,7 +64,8 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 33 | `397af16` | M4: onboarding guide `docs/guide/onboarding.md` |
 | 34 | `3c8c7c4` | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
 | 35 | `45df3a8` | Agents, step 1: `internal/schematree` (the payload tree, moved out of `web`), `internal/agentdoc` (model → Markdown: llms.txt, API, operation and event pages; golden tests) |
-| 36 | _uncommitted_ | Agents, step 2: `/llms.txt`, `/llms-full.txt?team=\|tag=\|kind=`, `/search.md`, `.md` (or `Accept: text/markdown`) on API, version, operation and event pages; Markdown errors and 401 instead of a sign-in redirect |
+| 36 | `66be7f5` | Agents, step 2: `/llms.txt`, `/llms-full.txt?team=\|tag=\|kind=`, `/search.md`, `.md` (or `Accept: text/markdown`) on API, version, operation and event pages; Markdown errors and 401 instead of a sign-in redirect |
+| 37 | _uncommitted_ | Agents, step 3: read-only personal access tokens (`pat_`): `user_tokens` (migration 00005), `/tokens` page to create, list and revoke; `Authorization: Bearer pat_…` on any GET |
 
 ### J1/J2 against a portal
 ```sh
@@ -690,10 +691,9 @@ be changed in M3's first commit to match.
 
 ## Decisions (agent docs)
 
-Plan: make the catalogue usable by coding agents. Steps 1 (agentdoc) and 2
-(Markdown routes + `/llms.txt`) are done; next come read-only personal access tokens
-(`pat_`, separate from CI's `ptk_`), `portal mcp` + `/mcp`, and an AGENTS.md
-snippet from `portal init`.
+Plan: make the catalogue usable by coding agents. Steps 1 (agentdoc), 2
+(Markdown routes + `/llms.txt`) and 3 (personal access tokens) are done;
+next come `portal mcp` + `/mcp`, and an AGENTS.md snippet from `portal init`.
 
 - **Markdown is the agent format**, not raw specs. Schemas are inlined as
   field lists (`- \`amount\` (integer, required, Money): Minor units.
@@ -730,6 +730,21 @@ snippet from `portal init`.
 - A request for Markdown without a session gets a Markdown 401, not a
   sign-in redirect; `s.error` answers Markdown requests in Markdown.
 - Not done: a `schemas/{ptr}.json` route for schemas past the 200-line cap.
+- **Personal access tokens** (`pat_` + 32 random bytes, sha256 stored) live
+  in `user_tokens`, not `ci_tokens`: CI tokens publish for a repo, PATs
+  read as a user. A PAT stands in for the session in `authed`, on GET and
+  HEAD only; other methods get 403, and so does `/tokens` itself (a token
+  can't mint tokens). A bearer that isn't a live PAT is a 401: no fallback
+  to the cookie.
+- A token snapshots the user's name, email and groups when it's made, like
+  a session does at sign-in. A user who leaves a team keeps that team's
+  read view (rejected pushes) through the token until it expires or is
+  revoked; reads are open to everyone anyway (Q2).
+- Expiry is 90 (default), 30 or 365 days; at most 20 live tokens per user.
+  Creating and revoking are audited (`user-token.create`, `.revoke`).
+- The token is shown once, in the POST's response (`Cache-Control:
+  no-store`), with a `curl` line to try it.
+- llms.txt is headed with the org's name, like the web pages.
 
 ## Decisions (store)
 

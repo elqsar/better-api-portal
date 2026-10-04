@@ -3,9 +3,16 @@
 package web
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/elqsar/better-api-portal/internal/store"
 )
 
 // mdGet fetches a Markdown page and checks its status and type.
@@ -26,7 +33,7 @@ func TestAgentMarkdown(t *testing.T) {
 	c := s.browser()
 
 	body, _ := s.mdGet(c, "/llms.txt", 200)
-	contains(t, "llms.txt", body, "# API portal",
+	contains(t, "llms.txt", body, "# Acme API portal",
 		"- [Orders API](http://portal.test/apis/orders-http.md): `orders-http`, OpenAPI, 2.3.0. Create, read and cancel orders.",
 		"## team-payments", "http://portal.test/search.md?q={words}",
 		"[Every API of team-orders in one file](http://portal.test/llms-full.txt?team=team-orders)")
@@ -65,7 +72,7 @@ func TestAgentMarkdown(t *testing.T) {
 	contains(t, "search", found, "# Search: refund", "http://portal.test/events/com.acme.payments.refund.issued.v1.md")
 
 	full, _ := s.mdGet(c, "/llms-full.txt?team=team-payments", 200)
-	contains(t, "llms-full", full, "# API portal: team-payments", "\n## Payment events\n",
+	contains(t, "llms-full", full, "# Acme API portal: team-payments", "\n## Payment events\n",
 		"\n### `com.acme.payments.refund.issued.v1`\n", "\n### `POST /orders/{orderId}/refunds`")
 	if strings.Contains(full, "orders-http") && strings.Contains(full, "\n## Orders API") {
 		t.Error("llms-full for one team has another's API")
@@ -79,4 +86,106 @@ func TestAgentMarkdown(t *testing.T) {
 	s.mdGet(c, "/search.md", 400)
 	s.mdGet(&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		"/llms.txt", 401)
+}
+
+// post sends a form, as a page in the portal would.
+func (s *site) post(c *http.Client, path string, form url.Values, headers ...string) (int, string) {
+	s.t.Helper()
+	req, _ := http.NewRequest("POST", s.ui.URL+path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", s.ui.URL)
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+var (
+	patRE    = regexp.MustCompile(`pat_[A-Za-z0-9_-]{43}`)
+	revokeRE = regexp.MustCompile(`action="/tokens/(\d+)/revoke"`)
+)
+
+func TestPersonalAccessTokens(t *testing.T) {
+	s := newSite(t)
+	s.push()
+	c := s.browser()
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	if _, body, _ := s.get(c, "/tokens"); !strings.Contains(body, "You have no tokens.") {
+		t.Fatalf("tokens page:\n%s", body)
+	}
+	if code, body := s.post(c, "/tokens", url.Values{"label": {""}, "days": {"90"}}); code != 400 || !strings.Contains(body, "Give the token a name") {
+		t.Errorf("no label: %d\n%s", code, body)
+	}
+	if code, _ := s.post(c, "/tokens", url.Values{"label": {"x"}, "days": {"7"}}); code != 400 {
+		t.Errorf("an expiry not offered: %d", code)
+	}
+	code, body := s.post(c, "/tokens", url.Values{"label": {"Claude Code"}, "days": {"90"}})
+	tok := patRE.FindString(body)
+	if code != 200 || tok == "" {
+		t.Fatalf("create: %d\n%s", code, body)
+	}
+	contains(t, "new token", body, "Your new token: Claude Code", "/llms.txt</code>")
+
+	// The token reads, as Markdown or HTML, but only reads.
+	auth := []string{"Authorization", "Bearer " + tok}
+	s.mdGet(noRedirect, "/llms.txt", 200, auth...)
+	if code, body, _ := s.get(noRedirect, "/apis/orders-http/versions/2.3.0", auth...); code != 200 || !strings.Contains(body, "<html") {
+		t.Errorf("an HTML page with a token: %d", code)
+	}
+	if code, _ := s.post(noRedirect, "/tokens", url.Values{"label": {"more"}, "days": {"90"}}, auth...); code != 403 {
+		t.Errorf("POST with a token: %d", code)
+	}
+	if code, _, _ := s.get(noRedirect, "/tokens", auth...); code != 403 {
+		t.Errorf("tokens page with a token: %d", code)
+	}
+
+	// The list shows the token, now used, and never the token itself.
+	_, page, _ := s.get(c, "/tokens")
+	m := revokeRE.FindStringSubmatch(page)
+	if m == nil || strings.Contains(page, tok) || strings.Contains(page, ">never<") {
+		t.Fatalf("tokens page after use:\n%s", page)
+	}
+
+	for _, bad := range []string{"pat_nope", "ptk_ci-token"} {
+		s.mdGet(noRedirect, "/llms.txt", 401, "Authorization", "Bearer "+bad)
+	}
+	old := "pat_" + randomString()
+	if _, err := s.st.CreateUserToken(context.Background(), hashID(old), store.Session{Subject: "u"}, "old",
+		time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	s.mdGet(noRedirect, "/llms.txt", 401, "Authorization", "Bearer "+old)
+
+	// Only its owner can revoke a token; then it stops working.
+	other := s.browserAs("someone-else")
+	if code, _ := s.post(other, "/tokens/"+m[1]+"/revoke", nil); code != 404 {
+		t.Errorf("revoke another user's token: %d", code)
+	}
+	s.mdGet(noRedirect, "/llms.txt", 200, auth...)
+	if code, _ := s.post(c, "/tokens/"+m[1]+"/revoke", nil); code != http.StatusSeeOther {
+		t.Errorf("revoke: %d", code)
+	}
+	s.mdGet(noRedirect, "/llms.txt", 401, auth...)
+}
+
+// browserAs is signed in as another user.
+func (s *site) browserAs(subject string) *http.Client {
+	s.t.Helper()
+	id := randomString()
+	err := s.st.CreateSession(context.Background(), hashID(id),
+		store.Session{Subject: subject, ExpiresAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return &http.Client{
+		Transport:     cookieTransport{id},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }

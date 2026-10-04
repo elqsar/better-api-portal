@@ -68,11 +68,17 @@ func (s *Server) oidc(ctx context.Context) (*oidcProvider, error) {
 // handler is a page that needs a signed-in user.
 type handler func(w http.ResponseWriter, r *http.Request, u *User)
 
-// authed loads the session, or sends the user to sign in.
+// authed loads the session, or sends the user to sign in. A personal
+// access token (Authorization: Bearer pat_…) stands in for the session on
+// GET and HEAD requests: tokens are read-only.
 func (s *Server) authed(h handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.loginReady {
 			s.notConfigured(w, r)
+			return
+		}
+		if tok, ok := bearer(r); ok {
+			s.tokenAuthed(w, r, h, tok)
 			return
 		}
 		sess, err := s.session(r)
@@ -81,7 +87,9 @@ func (s *Server) authed(h handler) http.Handler {
 			return
 		}
 		if sess == nil && wantsMarkdown(r) {
-			markdownError(w, http.StatusUnauthorized, "Sign in first", "The portal needs a signed-in user.")
+			markdownError(w, http.StatusUnauthorized, "Sign in first",
+				"The portal needs a signed-in user. Agents send a personal access token, which any user can create at "+
+					s.urls().Base+"/tokens: Authorization: Bearer pat_…")
 			return
 		}
 		if sess == nil {
@@ -97,6 +105,43 @@ func (s *Server) authed(h handler) http.Handler {
 		}
 		h(w, r, s.user(sess))
 	})
+}
+
+// bearer returns the request's bearer token, if it sends one.
+func bearer(r *http.Request) (string, bool) {
+	scheme, tok, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	return strings.TrimSpace(tok), true
+}
+
+// tokenAuthed serves a request that authenticates with a bearer token,
+// which must be a live personal access token. The answers are Markdown:
+// whoever sends a token is a program.
+func (s *Server) tokenAuthed(w http.ResponseWriter, r *http.Request, h handler, tok string) {
+	if !strings.HasPrefix(tok, patPrefix) {
+		markdownError(w, http.StatusUnauthorized, "Not a personal access token",
+			"The web UI takes personal access tokens ("+patPrefix+"…), created at "+s.urls().Base+"/tokens.")
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		markdownError(w, http.StatusForbidden, "Read-only", "Personal access tokens can only read.")
+		return
+	}
+	sess, err := s.Store.UserTokenSession(r.Context(), hashID(tok))
+	if err != nil {
+		s.fail(w, r, nil, err)
+		return
+	}
+	if sess == nil {
+		markdownError(w, http.StatusUnauthorized, "Token not accepted",
+			"The token is unknown, expired or revoked. Create a new one at "+s.urls().Base+"/tokens.")
+		return
+	}
+	u := s.user(sess)
+	u.ViaToken = true
+	h(w, r, u)
 }
 
 func (s *Server) notConfigured(w http.ResponseWriter, r *http.Request) {
