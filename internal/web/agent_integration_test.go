@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/elqsar/better-api-portal/internal/agentmcp"
 	"github.com/elqsar/better-api-portal/internal/store"
 )
 
@@ -187,5 +190,93 @@ func (s *site) browserAs(subject string) *http.Client {
 	return &http.Client{
 		Transport:     cookieTransport{id},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+type headerTransport struct{ header, value string }
+
+func (h headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Header.Set(h.header, h.value)
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+func mcpCall(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) (string, bool) {
+	t.Helper()
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	var b strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String(), res.IsError
+}
+
+// An agent finds an event and its payload through the MCP tools: at /mcp,
+// and through portal mcp's Remote catalogue, which give the same pages.
+func TestMCP(t *testing.T) {
+	s := catalogue(t)
+	ctx := context.Background()
+	tok := "pat_" + randomString()
+	if _, err := s.st.CreateUserToken(ctx, hashID(tok), store.Session{Subject: "u"}, "mcp", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.Post(s.ui.URL+"/mcp", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 401 || resp.Header.Get("WWW-Authenticate") == "" {
+		t.Errorf("/mcp without a token: %d %v", resp.StatusCode, resp.Header)
+	}
+
+	hc := &http.Client{Transport: headerTransport{"Authorization", "Bearer " + tok}}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil).Connect(ctx,
+		&mcp.StreamableClientTransport{Endpoint: s.ui.URL + "/mcp", HTTPClient: hc, DisableStandaloneSSE: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+
+	st, ct := mcp.NewInMemoryTransports()
+	if _, err := agentmcp.NewServer(&agentmcp.Remote{Base: s.ui.URL, Token: tok}, "test").Connect(ctx, st, nil); err != nil {
+		t.Fatal(err)
+	}
+	remote, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+
+	for _, c := range []struct {
+		tool string
+		args map[string]any
+		want []string
+	}{
+		{"search_apis", map[string]any{"query": "refund"}, []string{"com.acme.payments.refund.issued.v1"}},
+		{"list_apis", nil, []string{"## team-orders", "orders-http"}},
+		{"get_api", map[string]any{"api_id": "orders-http"}, []string{"# Orders API", "## Operations"}},
+		{"get_operation", map[string]any{"api_id": "orders-http", "operation": "GET /orders/{orderId}"},
+			[]string{"# `GET /orders/{orderId}`", "### 401, 404"}},
+		{"get_event", map[string]any{"type": "com.acme.orders.order.created.v1"},
+			[]string{"## Payload (data)", "- `total`", "## Consumers"}},
+	} {
+		got, isErr := mcpCall(t, cs, c.tool, c.args)
+		if isErr {
+			t.Errorf("%s: error %s", c.tool, got)
+		}
+		contains(t, c.tool, got, c.want...)
+		if viaRemote, _ := mcpCall(t, remote, c.tool, c.args); viaRemote != got {
+			t.Errorf("%s through portal mcp:\n%s\nat /mcp:\n%s", c.tool, viaRemote, got)
+		}
+	}
+	for _, cl := range []*mcp.ClientSession{cs, remote} {
+		if got, isErr := mcpCall(t, cl, "get_api", map[string]any{"api_id": "nope"}); !isErr || !strings.Contains(got, "No such API") {
+			t.Errorf("unknown API: %q (error %v)", got, isErr)
+		}
 	}
 }

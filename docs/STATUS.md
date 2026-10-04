@@ -65,7 +65,8 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 34 | `3c8c7c4` | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
 | 35 | `45df3a8` | Agents, step 1: `internal/schematree` (the payload tree, moved out of `web`), `internal/agentdoc` (model → Markdown: llms.txt, API, operation and event pages; golden tests) |
 | 36 | `66be7f5` | Agents, step 2: `/llms.txt`, `/llms-full.txt?team=\|tag=\|kind=`, `/search.md`, `.md` (or `Accept: text/markdown`) on API, version, operation and event pages; Markdown errors and 401 instead of a sign-in redirect |
-| 37 | _uncommitted_ | Agents, step 3: read-only personal access tokens (`pat_`): `user_tokens` (migration 00005), `/tokens` page to create, list and revoke; `Authorization: Bearer pat_…` on any GET |
+| 37 | `f53d1ba` | Agents, step 3: read-only personal access tokens (`pat_`): `user_tokens` (migration 00005), `/tokens` page to create, list and revoke; `Authorization: Bearer pat_…` on any GET |
+| 38 | _uncommitted_ | Agents, step 4: MCP server (`internal/agentmcp`, go-sdk v1.8.0): `search_apis`, `list_apis`, `get_api`, `get_operation`, `get_event`; `/mcp` in `portal serve` (PAT), `portal mcp` (stdio, reads the `.md` pages) |
 
 ### J1/J2 against a portal
 ```sh
@@ -98,7 +99,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 
 | Package | Role |
 |---|---|
-| `cmd/portal` | cobra CLI: `init`, `check`, `diff`, `bundle`, `push`, `migrate`, `reindex`, `serve`, `admin token` |
+| `cmd/portal` | cobra CLI: `init`, `check`, `diff`, `bundle`, `push`, `migrate`, `reindex`, `serve`, `admin token`, `mcp` |
 | `internal/check` | Orchestrator: descriptor → per-API parse → lint → (baseline) diff → policy; `RunBundles` does the same for an uploaded descriptor + bundles; `DiffBundles` compares two stored versions |
 | `internal/descriptor` | `portal.yaml` load and validation; `Sniff` detects a spec's kind |
 | `internal/yamldoc` | YAML with pointer→line index; schema validation; violation flattening |
@@ -118,6 +119,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/schematree` | JSON Schema → tree (`Node`) for the event page and agentdoc; depth and node limits |
 | `internal/agentdoc` | Markdown for AI agents: `Catalogue` (llms.txt), `APIPage` (`full` for llms-full.txt), `OperationPage`, `MessagePage`; `Load` parses a bundle with every document so refs resolve |
+| `internal/agentmcp` | MCP tools over a `Catalogue` of Markdown pages: in-process (`web/mcp.go`, `/mcp`) or `Remote` over HTTP with a PAT (`portal mcp`) |
 | `internal/initkit` | `portal init`: `Detect` specs (via `descriptor.Sniff`), `Propose` ids, render `Descriptor` and the GitHub `Workflow` (embedded template) |
 | `internal/client` | REST client for the CLI: credentials from the environment (`PORTAL_TOKEN`, GitHub Actions ID token), `Push` with retries, `Latest` baseline with hash check |
 | `internal/auth` | `CI` authenticator: OIDC ID tokens from `ci.trustedIssuers` (go-oidc, lazy discovery), static `ptk_` tokens by sha256 |
@@ -692,8 +694,8 @@ be changed in M3's first commit to match.
 ## Decisions (agent docs)
 
 Plan: make the catalogue usable by coding agents. Steps 1 (agentdoc), 2
-(Markdown routes + `/llms.txt`) and 3 (personal access tokens) are done;
-next come `portal mcp` + `/mcp`, and an AGENTS.md snippet from `portal init`.
+(Markdown routes + `/llms.txt`), 3 (personal access tokens) and 4 (MCP) are
+done; next comes an AGENTS.md snippet from `portal init` and a guide section.
 
 - **Markdown is the agent format**, not raw specs. Schemas are inlined as
   field lists (`- \`amount\` (integer, required, Money): Minor units.
@@ -745,6 +747,22 @@ next come `portal mcp` + `/mcp`, and an AGENTS.md snippet from `portal init`.
 - The token is shown once, in the POST's response (`Cache-Control:
   no-store`), with a `curl` line to try it.
 - llms.txt is headed with the org's name, like the web pages.
+- **MCP tools return the same Markdown as the pages**, through one
+  `agentmcp.Catalogue` interface. The web package renders each page with an
+  `*MD` method returning `(body, error)`; a `docError` carries a status and
+  a message the agent can act on, and becomes a tool error (`IsError`), not
+  a protocol error.
+- Five tools, not the roadmap's list: `list_dependencies` is part of
+  `get_api` (Consumers/Consumes), `get_schema` isn't needed while schemas
+  are inlined, and `diff_versions` waits for a Markdown diff page.
+- `/mcp` is stateless streamable HTTP with JSON responses: the tools only
+  read and never call back. It takes **POST with a PAT only**: a session
+  cookie isn't accepted, so another site can't make a signed-in browser
+  call it, and `sameOrigin` still refuses a foreign Origin.
+- `portal mcp` needs no database: `agentmcp.Remote` GETs the `.md` pages
+  with `$PORTAL_TOKEN`, and passes the portal's Markdown error on as the
+  tool error. The integration test checks it gives the same text as `/mcp`.
+- Operation pages also answer at `/versions/latest/operations/{op}.md`.
 
 ## Decisions (store)
 

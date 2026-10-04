@@ -72,6 +72,8 @@ type Options struct {
 	// HTTPClient reaches the identity provider; nil means
 	// http.DefaultClient.
 	HTTPClient *http.Client
+	// Version is the portal's, for the MCP server to report.
+	Version string
 }
 
 // Server serves the web UI.
@@ -222,6 +224,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /llms.txt", s.authed(s.llmsTxt))
 	mux.Handle("GET /llms-full.txt", s.authed(s.llmsFull))
 	mux.Handle("GET /search.md", s.authed(s.searchMarkdown))
+	mux.Handle("/mcp", s.mcpHandler())
 	mux.Handle("GET /tokens", s.authed(s.tokens))
 	mux.Handle("POST /tokens", s.authed(s.createToken))
 	mux.Handle("POST /tokens/{id}/revoke", s.authed(s.revokeToken))

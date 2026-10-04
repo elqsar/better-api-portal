@@ -60,7 +60,7 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd(), pushCmd(), reindexCmd(), versionCmd(), initCmd())
+	root.AddCommand(checkCmd(), diffCmd(), bundleCmd(), migrateCmd(), serveCmd(), adminCmd(), pushCmd(), reindexCmd(), versionCmd(), initCmd(), mcpCmd())
 	return root
 }
 
@@ -335,7 +335,8 @@ sign in as anyone, with any configured group: for local development only.`,
 				mux.Handle("/dev/oidc/", idp.Handler())
 				log.Warn("--dev-login: anyone can sign in as anyone; never use this in production", "issuer", idp.Issuer())
 			}
-			ui, err := web.New(web.Options{Store: s, Config: cfg, Log: log, ClientSecret: os.Getenv("PORTAL_OIDC_CLIENT_SECRET")})
+			ui, err := web.New(web.Options{Store: s, Config: cfg, Log: log, ClientSecret: os.Getenv("PORTAL_OIDC_CLIENT_SECRET"),
+				Version: portalVersion()})
 			if err != nil {
 				return err
 			}

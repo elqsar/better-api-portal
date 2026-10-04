@@ -14,7 +14,8 @@ import (
 
 // Markdown for AI agents (internal/agentdoc): /llms.txt, /llms-full.txt,
 // /search.md, and every API, operation and event page with .md appended or
-// requested with Accept: text/markdown.
+// requested with Accept: text/markdown. The *MD methods render the pages;
+// the HTTP handlers here and the MCP tools (mcp.go) serve them.
 
 // agentDocVersion is part of a Markdown page's ETag: bump it when
 // agentdoc's output changes.
@@ -27,6 +28,19 @@ func (s *Server) portalName() string {
 
 // maxFull caps /llms-full.txt; the APIs past it are listed with links.
 const maxFull = 512 << 10
+
+// docError is a page that can't be shown for a reason the reader can act
+// on, such as a wrong id.
+type docError struct {
+	status       int
+	heading, msg string
+}
+
+func (e *docError) Error() string { return e.heading + ". " + e.msg }
+
+func notFound(heading, msg string) error {
+	return &docError{http.StatusNotFound, heading, msg}
+}
 
 // wantsMarkdown reports whether the request is for an agent's Markdown:
 // a .md or llms*.txt path, or an Accept header that prefers text/markdown
@@ -48,9 +62,17 @@ func trimMD(r *http.Request, name string) {
 	r.SetPathValue(name, strings.TrimSuffix(r.PathValue(name), ".md"))
 }
 
-// writeMarkdown sends a Markdown page. A non-empty etag makes it
-// cacheable: versions are immutable.
-func writeMarkdown(w http.ResponseWriter, r *http.Request, body, etag string) {
+// serveMarkdown sends a rendered page, or its error. A non-empty etag
+// makes the page cacheable: versions are immutable.
+func (s *Server) serveMarkdown(w http.ResponseWriter, r *http.Request, u *User, body, etag string, err error) {
+	if de := (*docError)(nil); errors.As(err, &de) {
+		markdownError(w, de.status, de.heading, de.msg)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, u, err)
+		return
+	}
 	h := w.Header()
 	h.Set("Content-Type", "text/markdown; charset=utf-8")
 	h.Add("Vary", "Accept")
@@ -83,19 +105,23 @@ func (s *Server) urls() agentdoc.URLs {
 	return agentdoc.URLs{Base: strings.TrimSuffix(s.publicURL.String(), "/")}
 }
 
-// llmsTxt is the index: every API by team.
 func (s *Server) llmsTxt(w http.ResponseWriter, r *http.Request, u *User) {
-	apis, err := s.Store.ListAPIs(r.Context(), store.APIFilter{})
+	body, err := s.indexMD(r.Context())
+	s.serveMarkdown(w, r, u, body, "", err)
+}
+
+// indexMD is llms.txt: every API by team.
+func (s *Server) indexMD(ctx context.Context) (string, error) {
+	apis, err := s.Store.ListAPIs(ctx, store.APIFilter{})
 	if err != nil {
-		s.fail(w, r, u, err)
-		return
+		return "", err
 	}
 	var entries []agentdoc.Entry
 	for _, a := range apis {
 		entries = append(entries, agentdoc.Entry{ID: a.ID, Kind: a.Kind, Title: a.Title, Owner: a.Owner,
 			Lifecycle: a.Lifecycle, Version: a.Latest, Description: a.Description})
 	}
-	writeMarkdown(w, r, agentdoc.Catalogue(s.portalName(), entries, s.urls()), "")
+	return agentdoc.Catalogue(s.portalName(), entries, s.urls()), nil
 }
 
 // llmsFull concatenates the full pages of the APIs a team, tag or kind
@@ -140,72 +166,100 @@ func (s *Server) llmsFull(w http.ResponseWriter, r *http.Request, u *User) {
 			b.WriteString("- [" + a.ID + "](" + s.urls().API(a.ID, "") + ")\n")
 		}
 	}
-	writeMarkdown(w, r, b.String(), "")
+	s.serveMarkdown(w, r, u, b.String(), "", nil)
 }
 
-// apiPageMarkdown serves an API's latest version, or the one in the URL.
+// apiPageMarkdown serves an API's latest version (semver ""), or the one
+// in the URL.
 func (s *Server) apiPageMarkdown(w http.ResponseWriter, r *http.Request, u *User, semver string) {
-	d := s.loadAPI(w, r, u, semver)
-	if d == nil {
-		return
-	}
-	if d.Version == nil {
-		markdownError(w, http.StatusNotFound, "Nothing published", d.API.ID+" has no published version yet.")
-		return
-	}
-	page, err := s.apiMarkdown(r.Context(), d.API.ID, d.Version.Semver, false, 0)
-	if err != nil {
-		s.fail(w, r, u, err)
-		return
-	}
+	body, hash, err := s.apiMD(r.Context(), r.PathValue("id"), semver)
 	// The latest page's content changes with each push, so only a pinned
 	// version gets an ETag.
-	etag := ""
-	if semver != "" {
-		etag = d.Version.ContentHash
+	if semver == "" {
+		hash = ""
 	}
-	writeMarkdown(w, r, page, etag)
+	s.serveMarkdown(w, r, u, body, hash, err)
 }
 
-// apiMarkdown renders one version of an API.
+// apiMD renders an API's version ("" or "latest" for the latest) and
+// returns its content hash.
+func (s *Server) apiMD(ctx context.Context, id, semver string) (body, hash string, err error) {
+	semver, err = s.resolveVersion(ctx, id, semver)
+	if err != nil {
+		return "", "", err
+	}
+	a, v, hash, err := s.agentAPI(ctx, id, semver)
+	if err != nil {
+		return "", "", err
+	}
+	body, err = s.withDeps(ctx, a, v, false, 0)
+	return body, hash, err
+}
+
+// apiMarkdown renders one version of an API, for llms-full.txt.
 func (s *Server) apiMarkdown(ctx context.Context, id, semver string, full bool, level int) (string, error) {
-	a, v, err := s.agentAPI(ctx, id, semver)
+	a, v, _, err := s.agentAPI(ctx, id, semver)
 	if err != nil {
 		return "", err
 	}
-	consumes, consumers, err := s.Store.Dependencies(ctx, id)
+	return s.withDeps(ctx, a, v, full, level)
+}
+
+// withDeps renders an API page with its dependencies.
+func (s *Server) withDeps(ctx context.Context, a *agentdoc.API, v *agentdoc.Version, full bool, level int) (string, error) {
+	consumes, consumers, err := s.Store.Dependencies(ctx, a.ID)
 	if err != nil {
 		return "", err
 	}
 	a.Consumers = agentDeps(byRepo(consumers))
 	for _, d := range consumes {
-		i := slices.IndexFunc(a.Consumes, func(x agentdoc.Dependency) bool { return x.To == d.To })
-		if i < 0 {
+		if !slices.ContainsFunc(a.Consumes, func(x agentdoc.Dependency) bool { return x.To == d.To }) {
 			a.Consumes = append(a.Consumes, agentdoc.Dependency{To: d.To, Types: d.Types})
 		}
 	}
 	return agentdoc.APIPage(a, v, s.urls(), full, level), nil
 }
 
-// agentAPI loads what agentdoc needs about a published version.
-func (s *Server) agentAPI(ctx context.Context, id, semver string) (*agentdoc.API, *agentdoc.Version, error) {
+// resolveVersion turns "" or "latest" into the API's latest published
+// version.
+func (s *Server) resolveVersion(ctx context.Context, id, semver string) (string, error) {
+	if semver != "" && semver != "latest" {
+		return semver, nil
+	}
 	api, err := s.Store.APIDetail(ctx, id)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	if api == nil {
-		return nil, nil, errNotFound
+		return "", notFound("No such API", "No API has the id "+id+". Search for it: "+s.urls().Search(id))
+	}
+	if api.LatestSemver == "" {
+		return "", notFound("Nothing published", id+" has no published version yet.")
+	}
+	return api.LatestSemver, nil
+}
+
+// agentAPI loads what agentdoc needs about a published version, and its
+// content hash.
+func (s *Server) agentAPI(ctx context.Context, id, semver string) (*agentdoc.API, *agentdoc.Version, string, error) {
+	api, err := s.Store.APIDetail(ctx, id)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if api == nil {
+		return nil, nil, "", notFound("No such API", "No API has the id "+id+". Search for it: "+s.urls().Search(id))
 	}
 	ver, err := s.Store.PublishedVersion(ctx, id, semver)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	if ver == nil {
-		return nil, nil, errNotFound
+		return nil, nil, "", notFound("No such version", id+" has no published version "+semver+
+			". Its latest version: "+s.urls().API(id, ""))
 	}
 	v, err := s.agentVersion(ctx, ver.ContentHash)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	a := &agentdoc.API{ID: api.ID, Kind: api.Kind, Title: api.Title, Owner: api.Owner, Lifecycle: api.Lifecycle,
 		System: api.System, Repo: api.Repo, Version: ver.Semver, Tags: api.Tags}
@@ -218,10 +272,8 @@ func (s *Server) agentAPI(ctx context.Context, id, semver string) (*agentdoc.API
 	for _, e := range api.Environments {
 		a.Environments = append(a.Environments, agentdoc.Environment{Name: e.Name, URL: e.URL, Broker: e.Broker})
 	}
-	return a, v, nil
+	return a, v, ver.ContentHash, nil
 }
-
-var errNotFound = errors.New("not found")
 
 // agentVersion parses a stored bundle with all its documents.
 func (s *Server) agentVersion(ctx context.Context, hash string) (*agentdoc.Version, error) {
@@ -249,44 +301,46 @@ func agentDeps(repos []consumerRepo) []agentdoc.Dependency {
 	return out
 }
 
-// operationMarkdown serves one operation, by operationId or by the
-// method-and-path key that search results link to.
 func (s *Server) operationMarkdown(w http.ResponseWriter, r *http.Request, u *User) {
 	trimMD(r, "op")
-	id, semver, key := r.PathValue("id"), r.PathValue("version"), r.PathValue("op")
-	a, v, err := s.agentAPI(r.Context(), id, semver)
-	if errors.Is(err, errNotFound) {
-		markdownError(w, http.StatusNotFound, "No such version", id+" has no published version "+semver+".")
-		return
+	body, etag, err := s.operationMD(r.Context(), r.PathValue("id"), r.PathValue("version"), r.PathValue("op"))
+	if r.PathValue("version") == "latest" {
+		etag = ""
 	}
+	s.serveMarkdown(w, r, u, body, etag, err)
+}
+
+// operationMD renders one operation, found by its operationId or by the
+// method-and-path key that search results link to.
+func (s *Server) operationMD(ctx context.Context, id, semver, key string) (body, etag string, err error) {
+	semver, err = s.resolveVersion(ctx, id, semver)
 	if err != nil {
-		s.fail(w, r, u, err)
-		return
+		return "", "", err
+	}
+	a, v, hash, err := s.agentAPI(ctx, id, semver)
+	if err != nil {
+		return "", "", err
 	}
 	for _, op := range v.Spec.Operations {
 		if agentdoc.OperationKey(op.Method, op.Path, op.OperationID) == key || agentdoc.OperationKey(op.Method, op.Path, "") == key {
-			ver, err := s.Store.PublishedVersion(r.Context(), id, semver)
-			if err != nil {
-				s.fail(w, r, u, err)
-				return
-			}
-			writeMarkdown(w, r, agentdoc.OperationPage(a, v, op, s.urls(), 0), ver.ContentHash+"-"+key)
-			return
+			return agentdoc.OperationPage(a, v, op, s.urls(), 0), hash + "-" + key, nil
 		}
 	}
-	markdownError(w, http.StatusNotFound, "No such operation",
+	return "", "", notFound("No such operation",
 		id+" "+semver+" has no operation "+key+". Its page lists them: "+s.urls().API(id, semver))
 }
 
-// eventMarkdown serves an event type: its owner's declaration and its
-// consumers.
 func (s *Server) eventMarkdown(w http.ResponseWriter, r *http.Request, u *User) {
-	ctx := r.Context()
-	typ := r.PathValue("type")
+	body, err := s.eventMD(r.Context(), r.PathValue("type"))
+	s.serveMarkdown(w, r, u, body, "", err)
+}
+
+// eventMD renders an event type: its owner's declaration and its
+// consumers.
+func (s *Server) eventMD(ctx context.Context, typ string) (string, error) {
 	declared, err := s.Store.MessageRoles(ctx, typ)
 	if err != nil {
-		s.fail(w, r, u, err)
-		return
+		return "", err
 	}
 	var owners []string
 	for _, m := range declared {
@@ -294,8 +348,7 @@ func (s *Server) eventMarkdown(w http.ResponseWriter, r *http.Request, u *User) 
 	}
 	deps, err := s.Store.TypeConsumers(ctx, typ, owners)
 	if err != nil {
-		s.fail(w, r, u, err)
-		return
+		return "", err
 	}
 	repos := byRepo(deps)
 	for i := range repos {
@@ -304,49 +357,48 @@ func (s *Server) eventMarkdown(w http.ResponseWriter, r *http.Request, u *User) 
 	consumers := agentDeps(repos)
 	if len(declared) == 0 {
 		if len(consumers) == 0 {
-			markdownError(w, http.StatusNotFound, "No such event type", "No API in the portal declares or consumes "+typ+".")
-			return
+			return "", notFound("No such event type", "No API in the portal declares or consumes "+typ+
+				". Search for it: "+s.urls().Search(typ))
 		}
 		var b strings.Builder
 		b.WriteString("# `" + typ + "`\n\nNo API in the portal declares this type, so its contract isn't known. Consumed by:\n\n")
 		for _, c := range consumers {
 			b.WriteString("- " + c.Repo + " (" + strings.Join(c.APIs, ", ") + ")\n")
 		}
-		writeMarkdown(w, r, b.String(), "")
-		return
+		return b.String(), nil
 	}
 	owner := declared[0]
-	a, v, err := s.agentAPI(ctx, owner.APIID, owner.Semver)
+	a, v, _, err := s.agentAPI(ctx, owner.APIID, owner.Semver)
 	if err != nil {
-		s.fail(w, r, u, err)
-		return
+		return "", err
 	}
 	for _, m := range v.Spec.Messages {
 		if m.Key == typ {
-			writeMarkdown(w, r, agentdoc.MessagePage(a, v, m, consumers, s.urls(), 0), "")
-			return
+			return agentdoc.MessagePage(a, v, m, consumers, s.urls(), 0), nil
 		}
 	}
 	// The index and the model disagree; reindex fixes it.
-	markdownError(w, http.StatusNotFound, "No such event type", owner.APIID+" "+owner.Semver+" doesn't declare "+typ+".")
+	return "", notFound("No such event type", owner.APIID+" "+owner.Semver+" doesn't declare "+typ+".")
 }
 
-// searchMarkdown lists search hits with links to their Markdown pages.
 func (s *Server) searchMarkdown(w http.ResponseWriter, r *http.Request, u *User) {
 	q := r.URL.Query()
-	sq := store.SearchQuery{Q: strings.TrimSpace(q.Get("q")), Kind: q.Get("kind"), Team: q.Get("team"),
-		API: q.Get("api"), Limit: 50}
+	body, err := s.searchMD(r.Context(), store.SearchQuery{Q: q.Get("q"), Kind: q.Get("kind"), Team: q.Get("team"), API: q.Get("api")})
+	s.serveMarkdown(w, r, u, body, "", err)
+}
+
+// searchMD lists search hits with links to their Markdown pages.
+func (s *Server) searchMD(ctx context.Context, sq store.SearchQuery) (string, error) {
+	sq.Q, sq.Limit = strings.TrimSpace(sq.Q), 50
 	if sq.Q == "" {
-		markdownError(w, http.StatusBadRequest, "No query",
-			"Pass the words to look for: /search.md?q=refund. Narrow with &kind=operation|message|schema|api, &team= or &api=.")
-		return
+		return "", &docError{http.StatusBadRequest, "No query",
+			"Pass the words to look for: /search.md?q=refund. Narrow with &kind=operation|message|schema|api, &team= or &api=."}
 	}
-	hits, err := s.Store.Search(r.Context(), sq)
+	hits, err := s.Store.Search(ctx, sq)
 	if err != nil {
-		s.fail(w, r, u, err)
-		return
+		return "", err
 	}
-	writeMarkdown(w, r, agentdoc.SearchPage(sq.Q, agentHits(hits), len(hits) == sq.Limit, s.urls()), "")
+	return agentdoc.SearchPage(sq.Q, agentHits(hits), len(hits) == sq.Limit, s.urls()), nil
 }
 
 func agentHits(hits []store.Hit) []agentdoc.Hit {
