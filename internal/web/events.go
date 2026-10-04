@@ -44,6 +44,11 @@ type bindingView struct {
 type brokerLink struct{ Env, Broker, UI string }
 
 func (s *Server) event(w http.ResponseWriter, r *http.Request, u *User) {
+	if wantsMarkdown(r) {
+		trimMD(r, "type")
+		s.eventMarkdown(w, r, u)
+		return
+	}
 	ctx := r.Context()
 	d := &eventData{Type: r.PathValue("type")}
 	var err error

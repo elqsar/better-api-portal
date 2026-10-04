@@ -46,6 +46,10 @@ type searchHit struct {
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request, u *User) {
+	if wantsMarkdown(r) {
+		s.searchMarkdown(w, r, u)
+		return
+	}
 	q := r.URL.Query()
 	d := searchData{
 		Query: store.SearchQuery{Q: strings.TrimSpace(q.Get("q")), Kind: q.Get("kind"), Team: q.Get("team"),

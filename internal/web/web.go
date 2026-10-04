@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elqsar/better-api-portal/internal/agentdoc"
 	"github.com/elqsar/better-api-portal/internal/config"
 	"github.com/elqsar/better-api-portal/internal/model"
 	"github.com/elqsar/better-api-portal/internal/store"
@@ -83,6 +84,8 @@ type Server struct {
 	docs  cache[[]byte]       // resolved OpenAPI documents
 	specs cache[*model.Spec]  // bundles parsed with their schemas, for event pages
 	diffs cache[*versionDiff] // by the two content hashes and the compatibility mode
+
+	agentVersions cache[*agentdoc.Version] // bundles parsed with every document, for Markdown pages
 }
 
 type staticFile struct {
@@ -209,7 +212,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /apis/{id}/versions/{version}/lint", s.authed(s.apiLint))
 	mux.Handle("GET /apis/{id}/versions/{version}/docs", s.authed(s.apiDocs))
 	mux.Handle("GET /apis/{id}/versions/{version}/openapi.json", s.authed(s.openAPIDocument))
+	mux.Handle("GET /apis/{id}/versions/{version}/operations/{op}", s.authed(s.operationMarkdown))
 	mux.Handle("GET /events/{type}", s.authed(s.event))
+	mux.Handle("GET /llms.txt", s.authed(s.llmsTxt))
+	mux.Handle("GET /llms-full.txt", s.authed(s.llmsFull))
+	mux.Handle("GET /search.md", s.authed(s.searchMarkdown))
 	mux.Handle("/", s.authed(func(w http.ResponseWriter, r *http.Request, u *User) {
 		s.error(w, r, u, http.StatusNotFound, "Not found", "There is no page at "+r.URL.Path+".")
 	}))
@@ -337,6 +344,10 @@ type errorData struct {
 }
 
 func (s *Server) error(w http.ResponseWriter, r *http.Request, u *User, status int, heading, msg string) {
+	if wantsMarkdown(r) {
+		markdownError(w, status, heading, msg)
+		return
+	}
 	s.render(w, r, status, "error", page{Title: heading, User: u, Data: errorData{status, heading, msg}})
 }
 

@@ -80,6 +80,10 @@ func (s *Server) authed(h handler) http.Handler {
 			s.fail(w, r, nil, err)
 			return
 		}
+		if sess == nil && wantsMarkdown(r) {
+			markdownError(w, http.StatusUnauthorized, "Sign in first", "The portal needs a signed-in user.")
+			return
+		}
 		if sess == nil {
 			// Only a page load goes to sign in; a subresource or fetch gets
 			// 401 rather than starting a sign-in of its own.

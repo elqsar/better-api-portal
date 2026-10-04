@@ -37,4 +37,4 @@ partial:
 
 ## Consumers
 
-- github.com/acme/ledger (ledger-events), team-finance: everything
+- github.com/acme/ledger (ledger-events), team-finance

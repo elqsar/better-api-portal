@@ -63,7 +63,8 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 32 | `ade16db` | M4: `portal init --events-from`: draft an event catalogue from existing JSON Schemas, with a type inventory (Q6) |
 | 33 | `397af16` | M4: onboarding guide `docs/guide/onboarding.md` |
 | 34 | `3c8c7c4` | M4: J1 acceptance test (`TestJourneyOnboardAService`): `initkit` on the payments fixture adds 2 files, the first push lists both APIs |
-| 35 | _uncommitted_ | Agents, step 1: `internal/schematree` (the payload tree, moved out of `web`), `internal/agentdoc` (model → Markdown: llms.txt, API, operation and event pages; golden tests) |
+| 35 | `45df3a8` | Agents, step 1: `internal/schematree` (the payload tree, moved out of `web`), `internal/agentdoc` (model → Markdown: llms.txt, API, operation and event pages; golden tests) |
+| 36 | _uncommitted_ | Agents, step 2: `/llms.txt`, `/llms-full.txt?team=\|tag=\|kind=`, `/search.md`, `.md` (or `Accept: text/markdown`) on API, version, operation and event pages; Markdown errors and 401 instead of a sign-in redirect |
 
 ### J1/J2 against a portal
 ```sh
@@ -111,7 +112,7 @@ portal diff old/openapi.yaml new/openapi.yaml   # the same kind on both sides
 | `internal/report` | Text, JSON, SARIF 2.1.0 and JUnit output |
 | `internal/config` | `portal.config.yaml`: org prefix, teams, `server` (listen, publicURL), CI issuers, OIDC, admins, `brokers` |
 | `internal/httpapi` | `/api/v1`: `POST push`, `POST check` (dry run), `GET apis/{id}/versions/{v\|latest}/bundle`, `/healthz`, `/readyz`; `Authenticator` interface |
-| `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; `web/devoidc` is the `--dev-login` stub provider |
+| `internal/web` | Web UI: embedded templates and static files (htmx vendored), CSP, OIDC sign-in, sessions, roles; Markdown for agents (`agent.go`); `web/devoidc` is the `--dev-login` stub provider |
 | `internal/textdiff` | Line diff per file (go-udiff's `lcs`), both sides' line numbers, `Fold` for unchanged runs |
 | `internal/index` | `model.Spec` → index rows and search documents; `Words` splits identifiers |
 | `internal/schematree` | JSON Schema → tree (`Node`) for the event page and agentdoc; depth and node limits |
@@ -689,8 +690,8 @@ be changed in M3's first commit to match.
 
 ## Decisions (agent docs)
 
-Plan: make the catalogue usable by coding agents. Step 1 (agentdoc) is done;
-next come Markdown routes + `/llms.txt`, read-only personal access tokens
+Plan: make the catalogue usable by coding agents. Steps 1 (agentdoc) and 2
+(Markdown routes + `/llms.txt`) are done; next come read-only personal access tokens
 (`pat_`, separate from CI's `ptk_`), `portal mcp` + `/mcp`, and an AGENTS.md
 snippet from `portal init`.
 
@@ -713,6 +714,22 @@ snippet from `portal init`.
   because the model doesn't carry them.
 - agentdoc doesn't import the store: callers fill `agentdoc.API`/`Entry`.
 - Retired APIs are left out of llms.txt, as search hides them.
+- **Routes:** Go's mux can't match `{id}.md`, so `.md` is stripped from the
+  last path value in the existing handlers (`trimMD`), which dispatch on
+  `wantsMarkdown`: a `.md`/`llms*.txt` path, or an `Accept` that lists
+  `text/markdown` before `text/html` (browsers list HTML first). Only
+  operations have a new route; they have no HTML page.
+- Operation pages answer to the operationId and to the method-and-path key,
+  because search hits ("GET /orders/{orderId}") don't carry the operationId.
+- A pinned version's page gets an ETag (content hash + `agentDocVersion`);
+  latest, event, search and llms pages don't, since their content moves
+  with pushes.
+- `llms-full.txt` stops adding APIs after 512 KiB and lists the rest with
+  links. llms.txt summarises each API's description: its first paragraph,
+  at most 200 characters (`store.APISummary.Description`, new).
+- A request for Markdown without a session gets a Markdown 401, not a
+  sign-in redirect; `s.error` answers Markdown requests in Markdown.
+- Not done: a `schemas/{ptr}.json` route for schemas past the 200-line cap.
 
 ## Decisions (store)
 

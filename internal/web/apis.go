@@ -134,6 +134,11 @@ func (s *Server) renderAPI(w http.ResponseWriter, r *http.Request, u *User, d *a
 
 // apiLatest sends /apis/{id} to the latest version.
 func (s *Server) apiLatest(w http.ResponseWriter, r *http.Request, u *User) {
+	if wantsMarkdown(r) {
+		trimMD(r, "id")
+		s.apiPageMarkdown(w, r, u, "")
+		return
+	}
 	d := s.loadAPI(w, r, u, "")
 	if d == nil {
 		return
@@ -146,6 +151,15 @@ func (s *Server) apiLatest(w http.ResponseWriter, r *http.Request, u *User) {
 }
 
 func (s *Server) apiOverview(w http.ResponseWriter, r *http.Request, u *User) {
+	if wantsMarkdown(r) {
+		trimMD(r, "version")
+		v := r.PathValue("version")
+		if v == "latest" {
+			v = ""
+		}
+		s.apiPageMarkdown(w, r, u, v)
+		return
+	}
 	if r.PathValue("version") == "latest" {
 		s.apiLatest(w, r, u)
 		return

@@ -20,6 +20,8 @@ type APISummary struct {
 	Latest                            string
 	LatestAt                          time.Time
 	Score                             int
+	// Description is the latest version's spec description.
+	Description string
 }
 
 // APIFilter narrows the API list; empty fields match everything.
@@ -39,7 +41,7 @@ func (s *Store) ListAPIs(ctx context.Context, f APIFilter) ([]APISummary, error)
 	rows, err := s.pool.Query(ctx, `
 		SELECT a.id, a.kind, `+titleSQL+`, a.owner, a.lifecycle, a.sunset,
 		       ARRAY(SELECT jsonb_array_elements_text(COALESCE(a.meta->'tags', '[]'))),
-		       v.semver, v.created_at, COALESCE(l.score, 0)
+		       v.semver, v.created_at, COALESCE(l.score, 0), COALESCE(vm.model->>'description', '')
 		FROM apis a
 		JOIN versions v ON v.id = a.latest_version_id
 		LEFT JOIN version_models vm ON vm.version_id = v.id
@@ -56,7 +58,7 @@ func (s *Store) ListAPIs(ctx context.Context, f APIFilter) ([]APISummary, error)
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (APISummary, error) {
 		var a APISummary
-		err := r.Scan(&a.ID, &a.Kind, &a.Title, &a.Owner, &a.Lifecycle, &a.Sunset, &a.Tags, &a.Latest, &a.LatestAt, &a.Score)
+		err := r.Scan(&a.ID, &a.Kind, &a.Title, &a.Owner, &a.Lifecycle, &a.Sunset, &a.Tags, &a.Latest, &a.LatestAt, &a.Score, &a.Description)
 		return a, err
 	})
 }

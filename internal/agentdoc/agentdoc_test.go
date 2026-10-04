@@ -90,7 +90,9 @@ func TestEvents(t *testing.T) {
 func TestCatalogue(t *testing.T) {
 	golden(t, "llms.txt", Catalogue("Acme API portal", []Entry{
 		{ID: "payments-http", Kind: "openapi", Title: "Payments API", Owner: "team-payments", Lifecycle: "production", Version: "1.2.0",
-			Description: "Payments and refunds.\nIdempotent writes"},
+			Description: "Payments and refunds.\nIdempotent writes\n\nA second paragraph that the index leaves out."},
+		{ID: "payments-ledger", Kind: "openapi", Owner: "team-payments", Lifecycle: "experimental", Version: "0.1.0",
+			Description: strings.Repeat("Very long description words ", 20)},
 		{ID: "orders-http", Kind: "openapi", Title: "Orders API", Owner: "team-orders", Lifecycle: "production", Version: "2.3.0"},
 		{ID: "orders-events", Kind: "cloudevents", Owner: "team-orders", Lifecycle: "deprecated", Version: "1.4.0"},
 		{ID: "legacy", Kind: "openapi", Owner: "team-orders", Lifecycle: "retired", Version: "0.9.0"},

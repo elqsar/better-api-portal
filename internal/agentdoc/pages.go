@@ -58,7 +58,7 @@ func Catalogue(name string, entries []Entry, u URLs) string {
 				note = append(note, e.Lifecycle)
 			}
 			item := fmt.Sprintf("- [%s](%s): %s", title, u.API(e.ID, ""), strings.Join(note, ", "))
-			if d := oneLine(e.Description); d != "" {
+			if d := summary(e.Description); d != "" {
 				item += ". " + sentence(d)
 			}
 			w.line(item)
@@ -71,6 +71,24 @@ func Catalogue(name string, entries []Entry, u URLs) string {
 		}
 	}
 	return w.String()
+}
+
+// maxSummary caps an API's description in the index, in runes.
+const maxSummary = 200
+
+// summary is a description's first paragraph on one line, shortened to
+// maxSummary.
+func summary(desc string) string {
+	para, _, _ := strings.Cut(strings.TrimSpace(desc), "\n\n")
+	s := []rune(oneLine(para))
+	if len(s) <= maxSummary {
+		return string(s)
+	}
+	cut := string(s[:maxSummary])
+	if i := strings.LastIndex(cut, " "); i > maxSummary/2 {
+		cut = cut[:i]
+	}
+	return cut + "…"
 }
 
 func kindName(kind string) string {
@@ -185,27 +203,34 @@ func brokerNote(broker string) string {
 // writeDeps lists dependencies: what is consumed (to) or who consumes.
 func writeDeps(w *writer, deps []Dependency, to bool) {
 	for _, d := range deps {
-		what := "everything"
-		if len(d.Types) > 0 {
-			var ts []string
-			for _, t := range d.Types {
-				ts = append(ts, code(t))
-			}
-			what = strings.Join(ts, ", ")
-		}
-		if to {
-			w.linef("- %s from %s", what, code(d.To))
-			continue
-		}
-		who := d.Repo
-		if len(d.APIs) > 0 {
-			who += " (" + strings.Join(d.APIs, ", ") + ")"
-		}
-		if d.Owner != "" {
-			who += ", " + d.Owner
-		}
-		w.linef("- %s: %s", who, what)
+		w.line("- " + depItem(d, to, true))
 	}
+}
+
+// depItem describes a dependency. withWhat adds what is consumed.
+func depItem(d Dependency, to, withWhat bool) string {
+	what := "everything"
+	if len(d.Types) > 0 {
+		var ts []string
+		for _, t := range d.Types {
+			ts = append(ts, code(t))
+		}
+		what = strings.Join(ts, ", ")
+	}
+	if to {
+		return what + " from " + code(d.To)
+	}
+	who := d.Repo
+	if len(d.APIs) > 0 {
+		who += " (" + strings.Join(d.APIs, ", ") + ")"
+	}
+	if d.Owner != "" {
+		who += ", " + d.Owner
+	}
+	if !withWhat {
+		return who
+	}
+	return who + ": " + what
 }
 
 // OperationPage renders one HTTP operation with its parameters, request
@@ -483,7 +508,9 @@ func MessagePage(a *API, v *Version, m model.Message, consumers []Dependency, u 
 	}
 	if len(consumers) > 0 {
 		w.heading(2, "Consumers")
-		writeDeps(w, consumers, false)
+		for _, d := range consumers {
+			w.line("- " + depItem(d, false, false))
+		}
 	}
 	return w.String()
 }
@@ -507,4 +534,65 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// Hit is a search result.
+type Hit struct {
+	APIID, Version, Kind, Ref, Title string
+	APIKind, Owner, Lifecycle        string
+	// Snippet is the matched text with matches in bold; Marked says
+	// whether it marks anything (a title-only match doesn't).
+	Snippet string
+	Marked  bool
+}
+
+// SearchPage lists search hits, each with a link to its page.
+func SearchPage(q string, hits []Hit, truncated bool, u URLs) string {
+	w := &writer{}
+	w.heading(1, "Search: "+q)
+	switch {
+	case len(hits) == 0:
+		w.line("Nothing matched. Try fewer or other words; a typo in a title is forgiven, in other text it isn't.")
+		return w.String()
+	case truncated:
+		w.linef("The first %d results, best first. Narrow with &kind=operation|message|schema|api, &team= or &api=.", len(hits))
+	default:
+		w.linef("%d results, best first.", len(hits))
+	}
+	w.blank()
+	for _, h := range hits {
+		var link, label string
+		switch h.Kind {
+		case "message":
+			label, link = code(h.Ref), u.Event(h.Ref)
+		case "operation":
+			method, path, _ := strings.Cut(h.Ref, " ")
+			label, link = code(h.Ref), u.Operation(h.APIID, h.Version, OperationKey(method, path, ""))
+		case "api":
+			label, link = cmpOr(h.Title, h.APIID), u.API(h.APIID, h.Version)
+		default: // a schema: its API's page links where it's used
+			label, link = code(cmpOr(h.Title, h.Ref)), u.API(h.APIID, h.Version)
+		}
+		where := []string{h.Kind}
+		if h.Kind == "api" {
+			where = []string{kindName(h.APIKind) + " API"}
+		}
+		where = append(where, h.APIID+" "+h.Version, h.Owner)
+		if h.Lifecycle == "deprecated" || h.Lifecycle == "retired" {
+			where = append(where, h.Lifecycle)
+		}
+		item := fmt.Sprintf("- [%s](%s) (%s)", label, link, strings.Join(where, ", "))
+		if h.Marked && h.Snippet != "" {
+			item += ": " + h.Snippet
+		}
+		w.line(item)
+	}
+	return w.String()
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

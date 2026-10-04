@@ -115,7 +115,7 @@ func oneLine(s string) string {
 
 // sentence ends s with a full stop unless it already ends a sentence.
 func sentence(s string) string {
-	if s == "" || strings.ContainsAny(s[len(s)-1:], ".!?:") {
+	if s == "" || strings.ContainsAny(s[len(s)-1:], ".!?:") || strings.HasSuffix(s, "…") {
 		return s
 	}
 	return s + "."
