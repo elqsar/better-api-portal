@@ -23,6 +23,7 @@ func TestInit(t *testing.T) {
 		{[]string{"--root", root}, "--owner is required"},
 		{[]string{"--root", root, "--owner", "team-orders", "--ci", "gitlab"}, `unknown --ci "gitlab"`},
 		{[]string{"--root", root, "--owner", "team-orders", "--ci", "github"}, "--ci needs --portal-url"},
+		{[]string{"--root", root, "--owner", "team-orders", "--agents"}, "--agents needs --portal-url"},
 		{[]string{"--root", t.TempDir(), "--owner", "team-orders"}, "no OpenAPI 3"},
 	} {
 		if _, err := run(append([]string{"init"}, c.args...)...); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -60,6 +61,20 @@ func TestInit(t *testing.T) {
 	}
 	if _, err := run(append(args, "--force")...); err != nil {
 		t.Errorf("--force: %v", err)
+	}
+
+	// --agents adds a section to AGENTS.md, and a rerun replaces it.
+	os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# Orders\n\nRun task test.\n"), 0o644)
+	for range 2 {
+		if out, err := run(append(args, "--force", "--agents")...); err != nil || !strings.Contains(out, "added the API portal section") {
+			t.Fatalf("--agents: %v\n%s", err, out)
+		}
+	}
+	agents, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if s := string(agents); !strings.HasPrefix(s, "# Orders\n\nRun task test.\n\n<!-- api-portal:start") ||
+		strings.Count(s, "## API portal") != 1 || !strings.Contains(s, "https://portal.test/mcp") ||
+		!strings.Contains(s, "- `orders-events`: `api/events.yaml`") {
+		t.Errorf("AGENTS.md:\n%s", s)
 	}
 }
 

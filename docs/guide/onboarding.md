@@ -190,12 +190,53 @@ and the log says `unchanged (metadata updated)`.
 Set `lifecycle: deprecated` and, optionally, `sunset: YYYY-MM-DD`. The API's
 pages show a banner, and search ranks it lower.
 
+### Using the portal from AI agents
+
+Coding agents such as Claude Code and Cursor can read the portal, so they look
+contracts up instead of guessing them. Each person creates a **personal access
+token** at `/tokens` in the portal. Tokens are read-only and expire after 30,
+90 or 365 days. Then pick one way in:
+
+- **MCP, served by the portal** (nothing to install):
+  ```sh
+  claude mcp add --transport http api-portal https://api-portal.acme.internal/mcp \
+    --header "Authorization: Bearer $PORTAL_TOKEN"
+  ```
+- **MCP over stdio**, through the CLI from step 1:
+  ```sh
+  claude mcp add api-portal -e PORTAL_TOKEN=pat_… -- portal mcp --url https://api-portal.acme.internal
+  ```
+- **Markdown pages**, for tools without MCP. `/llms.txt` is the index, and
+  every API, operation and event page has a Markdown version, at its URL plus
+  `.md` or with `Accept: text/markdown`:
+  ```sh
+  curl -H "Authorization: Bearer $PORTAL_TOKEN" 'https://api-portal.acme.internal/search.md?q=refund'
+  curl -H "Authorization: Bearer $PORTAL_TOKEN" https://api-portal.acme.internal/events/com.acme.orders.order.created.v1.md
+  ```
+
+The MCP tools are `search_apis`, `list_apis`, `get_api`, `get_operation` and
+`get_event`. They return the same Markdown as the pages, with request,
+response and payload schemas written out as field lists.
+
+To make agents in your repo use the portal, add a section to its `AGENTS.md`
+(or `CLAUDE.md`):
+
+```sh
+portal init --owner team-orders --portal-url https://api-portal.acme.internal --agents --force
+```
+
+The section says to look contracts up in the portal, explains how, and says to
+run `portal check` after changing one of the repo's specs. A rerun replaces the
+section and leaves the rest of the file alone. `--force` only lets `portal.yaml`
+be rewritten. Add `--stdout` to print everything instead of writing it.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
 | `401` from the portal in CI | The job can't get an ID token. Check that `permissions: id-token: write` is set. Pull requests from forks never get one, so for those, run `portal check` against a checkout of the base branch instead (`--baseline`). |
 | `403` on push | Only `main` and tags may publish. Other refs can check (`--dry-run`) but not push. |
+| An agent gets `401 Token not accepted` | The personal access token expired or was revoked. Create a new one at `/tokens`. CI tokens (`ptk_`) don't work for reading. |
 | `api-claimed` | Another repo published this id first. Pick another id, or ask a portal admin to transfer it. |
 | `version-immutable` | The spec changed without a version bump. Bump the version. |
 | `ce-type-unique` | Another API already declares this event type. If you consume it, move it to `consumes` in `portal.yaml`. |

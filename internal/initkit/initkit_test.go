@@ -129,3 +129,43 @@ func TestWorkflowExample(t *testing.T) {
 		}
 	}
 }
+
+func TestAgents(t *testing.T) {
+	apis := []API{{ID: "orders-http", Spec: Spec{Path: "api/openapi.yaml"}}}
+	section := AgentsSection("https://portal.test/", apis)
+	for _, s := range []string{"https://portal.test/mcp", "https://portal.test/tokens", "https://portal.test/llms.txt",
+		"- `orders-http`: `api/openapi.yaml`", "portal check --baseline-from https://portal.test"} {
+		if !strings.Contains(string(section), s) {
+			t.Errorf("section lacks %q:\n%s", s, section)
+		}
+	}
+
+	// Appended to a file, then replaced in place on a rerun.
+	once := MergeAgents([]byte("# Shop\n\nBuild with task.\n"), section)
+	if !strings.HasPrefix(string(once), "# Shop\n\nBuild with task.\n\n"+agentsStart) {
+		t.Errorf("appended:\n%s", once)
+	}
+	edited := strings.Replace(string(once), agentsEnd+"\n", agentsEnd+"\n\n## Later\n", 1)
+	newer := AgentsSection("https://portal2.test", nil)
+	twice := string(MergeAgents([]byte(edited), newer))
+	if strings.Count(twice, agentsStart) != 1 || strings.Contains(twice, "portal.test/") ||
+		!strings.HasSuffix(twice, agentsEnd+"\n\n## Later\n") || !strings.Contains(twice, "Build with task.") {
+		t.Errorf("replaced:\n%s", twice)
+	}
+	if got := string(MergeAgents(nil, section)); got != string(section) {
+		t.Errorf("new file:\n%s", got)
+	}
+
+	dir := t.TempDir()
+	if got := AgentsFile(dir); got != filepath.Join(dir, "AGENTS.md") {
+		t.Errorf("no file: %s", got)
+	}
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), nil, 0o644)
+	if got := AgentsFile(dir); got != filepath.Join(dir, "CLAUDE.md") {
+		t.Errorf("only CLAUDE.md: %s", got)
+	}
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), nil, 0o644)
+	if got := AgentsFile(dir); got != filepath.Join(dir, "AGENTS.md") {
+		t.Errorf("both: %s", got)
+	}
+}

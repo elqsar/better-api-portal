@@ -21,7 +21,7 @@ Additions not in the original idea:
 | Feature | Why | Phase |
 |---|---|---|
 | Event flow graph | Who produces / consumes each event type — the main question for async | P2 |
-| MCP server | Lets coding agents query the catalogue | P2 |
+| Agent access: MCP server, `/llms.txt`, Markdown pages, personal access tokens | Lets coding agents query the catalogue | Done, ahead of P2 (06-roadmap, "Agent access") |
 | Backstage / xRegistry interop | Easier adoption and open-sourcing | P3 |
 
 ## User journeys (MVP)

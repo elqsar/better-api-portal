@@ -161,7 +161,7 @@ func TestPersonalAccessTokens(t *testing.T) {
 	}
 	old := "pat_" + randomString()
 	if _, err := s.st.CreateUserToken(context.Background(), hashID(old), store.Session{Subject: "u"}, "old",
-		time.Now().Add(-time.Minute)); err != nil {
+		time.Now().Add(-24*time.Hour)); err != nil { // a day: the database's clock may be off from ours
 		t.Fatal(err)
 	}
 	s.mdGet(noRedirect, "/llms.txt", 401, "Authorization", "Bearer "+old)

@@ -34,6 +34,7 @@ func initCmd() *cobra.Command {
 		eventsFrom string
 		eventsOut  string
 		events     initkit.EventsOptions
+		agents     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -58,7 +59,12 @@ overrides it) and is added to portal.yaml. --kafka-topic or --nats-subject
 sets its default binding. It lists the types that break the portal's naming
 rules.
 
-Nothing is overwritten without --force; --stdout prints the descriptor
+--agents adds a section to the repo's AGENTS.md (CLAUDE.md if only that
+exists) telling coding agents to look contracts up in the portal, and how:
+its MCP tools, or its Markdown pages. It needs --portal-url. A rerun
+replaces the section and leaves the rest of the file alone.
+
+Nothing else is overwritten without --force; --stdout prints the descriptor
 instead of writing it. Guide: ` + onboardingGuide,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -70,6 +76,9 @@ instead of writing it. Guide: ` + onboardingGuide,
 			}
 			if ci != "" && portalURL == "" {
 				return errors.New("--ci needs --portal-url, the portal the workflow pushes to")
+			}
+			if agents && portalURL == "" {
+				return errors.New("--agents needs --portal-url, the portal agents look contracts up in")
 			}
 			if ci != "" && cliVersion == "" {
 				v := portalVersion()
@@ -115,13 +124,23 @@ instead of writing it. Guide: ` + onboardingGuide,
 			if len(specs) == 0 {
 				return fmt.Errorf("no OpenAPI 3, AsyncAPI 3 or event catalogue file found under %s; for existing CloudEvents with JSON Schemas, use --events-from (see %s)", root, onboardingGuide)
 			}
-			desc := initkit.Descriptor(opts, initkit.Propose(specs, opts.Service))
+			proposed := initkit.Propose(specs, opts.Service)
+			desc := initkit.Descriptor(opts, proposed)
+			var section []byte
+			if agents {
+				section = initkit.AgentsSection(portalURL, proposed)
+			}
 			if stdout {
 				if draft != nil {
 					fmt.Fprintf(w, "# %s\n%s\n# portal.yaml\n", eventsOut, draft)
 				}
-				_, err := w.Write(desc)
-				return err
+				if _, err := w.Write(desc); err != nil {
+					return err
+				}
+				if section != nil {
+					fmt.Fprintf(w, "\n# %s\n%s", filepath.Base(initkit.AgentsFile(root)), section)
+				}
+				return nil
 			}
 
 			descPath := filepath.Join(root, "portal.yaml")
@@ -153,6 +172,17 @@ instead of writing it. Guide: ` + onboardingGuide,
 				}
 				fmt.Fprintf(w, "wrote %s\n", p)
 			}
+			if section != nil {
+				p := initkit.AgentsFile(root)
+				old, err := os.ReadFile(p)
+				if err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return err
+				}
+				if err := os.WriteFile(p, initkit.MergeAgents(old, section), 0o644); err != nil {
+					return err
+				}
+				fmt.Fprintf(w, "added the API portal section to %s\n", p)
+			}
 
 			fmt.Fprintf(w, "\nChecking %s:\n", descPath)
 			r, err := check.Run(descPath, check.Options{})
@@ -170,6 +200,9 @@ instead of writing it. Guide: ` + onboardingGuide,
 			fmt.Fprintln(w, "  - review the API ids: they can't change once published")
 			if ci == "" {
 				fmt.Fprintln(w, "  - add the CI workflow: portal init --ci github --portal-url URL --force, or see the guide")
+			}
+			if !agents {
+				fmt.Fprintln(w, "  - tell coding agents about the portal: portal init --agents --portal-url URL --force")
 			}
 			fmt.Fprintln(w, "  - commit, and the first push from main publishes the APIs")
 			fmt.Fprintln(w, "  - guide: "+onboardingGuide)
@@ -193,6 +226,7 @@ instead of writing it. Guide: ` + onboardingGuide,
 	cmd.Flags().StringVar(&events.Title, "events-title", "", "the drafted catalogue's title (default: \"<service> events\")")
 	cmd.Flags().StringVar(&events.KafkaTopic, "kafka-topic", "", "the drafted catalogue's default Kafka topic")
 	cmd.Flags().StringVar(&events.NATSSubject, "nats-subject", "", "the drafted catalogue's default NATS subject")
+	cmd.Flags().BoolVar(&agents, "agents", false, "also add an API portal section to AGENTS.md (or CLAUDE.md) for coding agents")
 	cmd.Flags().StringVar(&cliVersion, "cli-version", "", "the portal CLI release the workflow installs (default: this binary's)")
 	return cmd
 }

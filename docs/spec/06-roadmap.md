@@ -16,6 +16,14 @@ Milestones are ordered so each one is usable on its own:
 
 Tuning rulesets against real specs (M5) is scheduled deliberately. The OWASP measurement in [04-governance](04-governance.md#rulesets) shows how badly an untuned ruleset can misfire.
 
+## Agent access (done, out of phase)
+
+Brought forward from Phase 2's MCP server: `/llms.txt`, Markdown versions of every page, read-only
+personal access tokens, MCP tools at `/mcp` and via `portal mcp`, and an
+`AGENTS.md` section from `portal init --agents`. Still open: a diff tool
+(`diff_versions`, after a Markdown diff page) and a JSON route for schemas
+past the 200-line cap.
+
 ## Phase 2
 
 | Feature | Notes |
@@ -24,7 +32,6 @@ Tuning rulesets against real specs (M5) is scheduled deliberately. The OWASP mea
 | Event flow graph | Per type: producer → topic → consumers; per team: in/out |
 | Try-it proxy | Server-side proxy to configured non-prod environments; forwards the user's token or a per-env service credential; allow-list of hosts; never prod by default |
 | Changelog & release notes | DiffReport → Markdown; optional `CHANGELOG.md` section; RSS/Slack/Teams webhook per team |
-| MCP server | `portal mcp` (stdio) and `/mcp` (HTTP): tools `search_apis`, `get_operation`, `get_message`, `get_schema`, `list_dependencies`. Read-only, user's OIDC token |
 | Security report | Auth-coverage per API (operations without security, public endpoints and their justification) |
 | Deprecation workflow | Notify declared consumers' team channels on deprecation / sunset approach |
 
@@ -69,3 +76,5 @@ Tuning rulesets against real specs (M5) is scheduled deliberately. The OWASP mea
 | D10 | Single Go binary + Postgres only; server-rendered UI with htmx | Low ops cost, easy contributions, credible OSS story |
 | D11 | Tracing out of scope beyond deep links | Runtime data is a different product |
 | D12 | CI auth via OIDC federation; static tokens only as fallback | No long-lived secrets in CI |
+| D13 | Agents read Markdown (`/llms.txt`, `.md` pages, MCP tools returning the same pages), not raw specs | Schemas inlined as field lists need no `$ref` resolution and cost fewer tokens; one renderer serves every agent surface |
+| D14 | Agents authenticate with read-only personal access tokens (`pat_`), separate from CI tokens | Agents can't do a browser OIDC sign-in; a token that only reads, as its user, can't publish if it leaks |

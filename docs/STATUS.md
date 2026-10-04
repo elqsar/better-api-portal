@@ -66,7 +66,8 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 35 | `45df3a8` | Agents, step 1: `internal/schematree` (the payload tree, moved out of `web`), `internal/agentdoc` (model → Markdown: llms.txt, API, operation and event pages; golden tests) |
 | 36 | `66be7f5` | Agents, step 2: `/llms.txt`, `/llms-full.txt?team=\|tag=\|kind=`, `/search.md`, `.md` (or `Accept: text/markdown`) on API, version, operation and event pages; Markdown errors and 401 instead of a sign-in redirect |
 | 37 | `f53d1ba` | Agents, step 3: read-only personal access tokens (`pat_`): `user_tokens` (migration 00005), `/tokens` page to create, list and revoke; `Authorization: Bearer pat_…` on any GET |
-| 38 | _uncommitted_ | Agents, step 4: MCP server (`internal/agentmcp`, go-sdk v1.8.0): `search_apis`, `list_apis`, `get_api`, `get_operation`, `get_event`; `/mcp` in `portal serve` (PAT), `portal mcp` (stdio, reads the `.md` pages) |
+| 38 | `77a8644` | Agents, step 4: MCP server (`internal/agentmcp`, go-sdk v1.8.0): `search_apis`, `list_apis`, `get_api`, `get_operation`, `get_event`; `/mcp` in `portal serve` (PAT), `portal mcp` (stdio, reads the `.md` pages) |
+| 39 | _uncommitted_ | Agents, step 5: `portal init --agents` (an API portal section in AGENTS.md or CLAUDE.md, replaced on rerun); guide section "Using the portal from AI agents"; roadmap D13, D14 |
 
 ### J1/J2 against a portal
 ```sh
@@ -693,9 +694,10 @@ be changed in M3's first commit to match.
 
 ## Decisions (agent docs)
 
-Plan: make the catalogue usable by coding agents. Steps 1 (agentdoc), 2
-(Markdown routes + `/llms.txt`), 3 (personal access tokens) and 4 (MCP) are
-done; next comes an AGENTS.md snippet from `portal init` and a guide section.
+Coding agents can use the catalogue: agentdoc Markdown, `/llms.txt` and `.md`
+pages, personal access tokens, MCP tools (`/mcp`, `portal mcp`), and
+`portal init --agents`. Recorded as D13 and D14 in 06-roadmap. Open: a
+`diff_versions` tool and a JSON route for schemas past the 200-line cap.
 
 - **Markdown is the agent format**, not raw specs. Schemas are inlined as
   field lists (`- \`amount\` (integer, required, Money): Minor units.
@@ -763,6 +765,11 @@ done; next comes an AGENTS.md snippet from `portal init` and a guide section.
   with `$PORTAL_TOKEN`, and passes the portal's Markdown error on as the
   tool error. The integration test checks it gives the same text as `/mcp`.
 - Operation pages also answer at `/versions/latest/operations/{op}.md`.
+- `portal init --agents` writes between `<!-- api-portal:start … -->` and
+  `<!-- api-portal:end -->`, so a rerun replaces only its section, and it
+  isn't subject to `--force`. It writes to AGENTS.md, or to CLAUDE.md when
+  only that exists. The section lists the repo's API ids and spec paths, and
+  says to run `portal check --baseline-from` after changing a spec.
 
 ## Decisions (store)
 
