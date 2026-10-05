@@ -9,6 +9,7 @@
     <a href="/apis/{{.APIID}}/versions/{{.Semver}}">{{.APIID}}</a> {{.Semver}}, which owns the contract
   </p>
   {{end}}
+  {{if $d.Owner}}{{template "ask-ai" (askAI (eventMD $d.Type) "event" false)}}{{end}}
 </header>
 
 {{if gt (len $d.Declared) 1}}

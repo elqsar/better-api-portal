@@ -166,6 +166,14 @@ func New(o Options) (*Server, error) {
 			}
 			return strconv.Itoa(n)
 		},
+		// askAI is the "ask-ai" partial's data: a page's Markdown path and
+		// what the page is, for the prompt.
+		"askAI": func(md, what string, compact bool) askAI { return askAI{md, what, compact} },
+		"apiMD": func(id, semver string) string { return agentdoc.URLs{}.API(id, semver) },
+		"operationMD": func(id, semver string, op model.Operation) string {
+			return agentdoc.URLs{}.Operation(id, semver, agentdoc.OperationKey(op.Method, op.Path, op.OperationID))
+		},
+		"eventMD": func(typ string) string { return agentdoc.URLs{}.Event(typ) },
 		"static": func(name string) (string, error) {
 			f, ok := s.static[name]
 			if !ok {
@@ -308,6 +316,14 @@ func acceptsGzip(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// askAI is a page's "Ask AI" menu (_ask_ai.html, static/ai.js): MD is the
+// page's Markdown path, What names it in the prompt. A compact menu, for a
+// table row, holds the Markdown actions too.
+type askAI struct {
+	MD, What string
+	Compact  bool
 }
 
 // page is what every template gets.

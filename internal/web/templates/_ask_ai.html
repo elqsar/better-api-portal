@@ -1,0 +1,22 @@
+{{/* ask-ai takes an askAI: actions that hand a page's Markdown to an AI
+   assistant. static/ai.js builds the prompt and does the copying. */}}
+{{define "ask-ai"}}<div class="ask-ai{{if .Compact}} compact{{end}}" data-md="{{.MD}}" data-what="{{.What}}">
+  <details class="menu">
+    <summary>Ask AI</summary>
+    <div class="menu-items">
+      <a data-ai-open="https://chatgpt.com/" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">Open in ChatGPT</a>
+      <a data-ai-open="https://claude.ai/new" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Open in Claude</a>
+      <button type="button" class="link" data-ai-copy="prompt">Copy prompt to ask AI</button>
+      {{if .Compact}}
+      <button type="button" class="link" data-ai-copy="markdown">Copy Markdown</button>
+      <a href="{{.MD}}">View as Markdown</a>
+      {{end}}
+      <p class="muted">The prompt links to this page. An assistant that can't sign in to the portal can't read it:
+        copy the Markdown into the chat instead.</p>
+    </div>
+  </details>
+  {{if not .Compact}}
+  <button type="button" class="link" data-ai-copy="markdown">Copy Markdown</button>
+  <a href="{{.MD}}">View as Markdown</a>
+  {{end}}
+</div>{{end}}

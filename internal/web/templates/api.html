@@ -8,6 +8,7 @@
     Version <strong>{{.Semver}}</strong>{{if $.Data.IsLatest}} (latest){{else}} · <a href="/apis/{{$a.ID}}/versions/{{$a.LatestSemver}}">latest is {{$a.LatestSemver}}</a>{{end}}
     · owned by {{$.Data.OwnerName}}
   </p>
+  {{template "ask-ai" (askAI (apiMD $a.ID .Semver) "API" false)}}
   {{end}}
 </header>
 {{if eq $a.Lifecycle "deprecated"}}
@@ -58,6 +59,7 @@
         <td class="nowrap">{{template "method" .Method}}</td>
         <td><code>{{.Path}}</code>{{if .Deprecated}} <span class="badge lc-deprecated">deprecated</span>{{end}}</td>
         <td>{{.Summary}}</td>
+        <td class="nowrap">{{template "ask-ai" (askAI (operationMD $a.ID $v.Semver .) "API operation" true)}}</td>
       </tr>
       {{end}}
       </tbody>

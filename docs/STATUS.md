@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-04
+Last updated: 2026-10-05
 
 A handoff note for continuing the work. The spec is in [spec/](spec/README.md),
 and the roadmap and milestones are in [spec/06-roadmap.md](spec/06-roadmap.md).
@@ -68,6 +68,7 @@ pilot teams onboard in under 30 minutes each) needs the deployed portal too.
 | 37 | `f53d1ba` | Agents, step 3: read-only personal access tokens (`pat_`): `user_tokens` (migration 00005), `/tokens` page to create, list and revoke; `Authorization: Bearer pat_…` on any GET |
 | 38 | `77a8644` | Agents, step 4: MCP server (`internal/agentmcp`, go-sdk v1.8.0): `search_apis`, `list_apis`, `get_api`, `get_operation`, `get_event`; `/mcp` in `portal serve` (PAT), `portal mcp` (stdio, reads the `.md` pages) |
 | 39 | `80239fc` | Agents, step 5: `portal init --agents` (an API portal section in AGENTS.md or CLAUDE.md, replaced on rerun); guide section "Using the portal from AI agents"; roadmap D13, D14 |
+| 40 | — | "Ask AI" menu on API, operation (overview table) and event pages: open in ChatGPT or Claude with a prompt linking the `.md` page and `/llms.txt`, copy the prompt, copy the Markdown, view as Markdown (`_ask_ai.html`, `static/ai.js`) |
 
 ### J1/J2 against a portal
 ```sh
