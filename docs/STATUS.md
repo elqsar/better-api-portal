@@ -160,8 +160,7 @@ one file per area. Add to them as you go.
 ## Next steps
 
 1. **Deploy**, which closes the open "done when"s of M2–M4:
-   1. Push the repo to `github.com/elqsar/better-api-portal` and cut
-      `v0.1.0` (`task release -- v0.1.0`, then `gh release create v0.1.0
+   1. Cut `v0.1.0` (the repo is pushed) (`task release -- v0.1.0`, then `gh release create v0.1.0
       dist/*`).
    2. Deploy the image (`task image`) with a `portal.config.yaml` that lists
       the real teams, OIDC and brokers.
@@ -180,7 +179,7 @@ one file per area. Add to them as you go.
 
 - Real-spec tuning (Q7: `oneOf` usage, Q6: type prefix) is pending access
   to company specs; scheduled for M5.
-- **Distribution:** nothing is published yet (the repo has no remote);
+- **Distribution:** the repo is public at `github.com/elqsar/better-api-portal` (since 2026-10-07), but no release is cut yet;
   releases are built locally and uploaded by hand, with no CI release
   workflow, signing or SBOM. The Helm chart is M5.
 - The GitHub OIDC path is tested against a fake issuer only, not a real
