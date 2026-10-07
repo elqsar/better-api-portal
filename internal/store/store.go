@@ -395,6 +395,23 @@ func (a API) columns() (map[string]any, *string) {
 	return meta, &a.Sunset
 }
 
+// indexAPI is what the search index takes from the API's metadata.
+func (a API) indexAPI() index.API {
+	x := index.API{ID: a.ID}
+	x.Title, _ = a.Meta["title"].(string)
+	switch tags := a.Meta["tags"].(type) {
+	case []string:
+		x.Tags = tags
+	case []any:
+		for _, t := range tags {
+			if s, ok := t.(string); ok {
+				x.Tags = append(x.Tags, s)
+			}
+		}
+	}
+	return x
+}
+
 // UpdateMeta brings an API's metadata (owner, lifecycle, sunset, meta) up
 // to date with a push whose version is already published, and rewrites its
 // dependencies. Kind and claim are unchanged. It reports whether anything
@@ -425,6 +442,9 @@ func (s *Store) UpdateMeta(ctx context.Context, a API, repoID int64, actor strin
 			return err
 		}
 		if err := syncDependencies(ctx, tx, a.ID); err != nil {
+			return err
+		}
+		if err := refreshAPIDocs(ctx, tx, a.indexAPI()); err != nil {
 			return err
 		}
 		return audit(ctx, tx, actor, "push.meta-updated", a.ID, map[string]any{"meta": meta, "owner": a.Owner, "lifecycle": a.Lifecycle})

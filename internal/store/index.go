@@ -127,6 +127,40 @@ func syncDependencies(ctx context.Context, tx pgx.Tx, apiID string) error {
 	return err
 }
 
+// refreshAPIDocs rewrites the api search document of each of the API's
+// indexed versions with its current title and tags, as portal reindex would.
+// The other documents don't carry them.
+func refreshAPIDocs(ctx context.Context, tx pgx.Tx, api index.API) error {
+	rows, err := tx.Query(ctx, `
+		SELECT m.version_id, m.model FROM version_models m JOIN versions v ON v.id = m.version_id
+		WHERE v.api_id = $1 AND v.status = 'published'`, api.ID)
+	if err != nil {
+		return err
+	}
+	type indexed struct {
+		id   int64
+		spec model.Spec
+	}
+	vs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (indexed, error) {
+		var x indexed
+		err := r.Scan(&x.id, &x.spec)
+		return x, err
+	})
+	if err != nil {
+		return err
+	}
+	for _, v := range vs {
+		d := index.APIDoc(api, &v.spec)
+		if _, err := tx.Exec(ctx, `
+			UPDATE search_docs SET ref = $2, title = $3, terms = $4, body = $5
+			WHERE version_id = $1 AND kind = $6`,
+			v.id, d.Ref, d.Title, d.Terms, d.Body, index.KindAPI); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Indexed is a published version to reindex.
 type Indexed struct {
 	VersionID   int64

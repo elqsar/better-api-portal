@@ -22,6 +22,7 @@ import (
 	"github.com/elqsar/better-api-portal/internal/config"
 	"github.com/elqsar/better-api-portal/internal/descriptor"
 	"github.com/elqsar/better-api-portal/internal/httpapi"
+	"github.com/elqsar/better-api-portal/internal/index"
 	"github.com/elqsar/better-api-portal/internal/model"
 	"github.com/elqsar/better-api-portal/internal/store"
 	"github.com/elqsar/better-api-portal/internal/store/storetest"
@@ -532,14 +533,30 @@ func TestPushUnchangedUpdatesMetadata(t *testing.T) {
 		}
 		return out
 	}
+	// The API's own search document carries the descriptor's title and tags.
+	apiHits := func(q string) []string {
+		t.Helper()
+		hits, err := st.Search(t.Context(), store.SearchQuery{Q: q, Kind: index.KindAPI, Limit: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, h := range hits {
+			out = append(out, h.APIID+" "+h.Semver+": "+h.Title)
+		}
+		return out
+	}
 	if got := consumes(); !slices.Equal(got, []string{"customers-http", "payments-events"}) {
 		t.Fatalf("consumes = %q", got)
+	}
+	if got := apiHits("returns"); len(got) != 0 {
+		t.Fatalf("returns found before the tag: %q", got)
 	}
 
 	// Only the descriptor changes: a new dependency, a new tag.
 	edited := checkout(t,
 		[3]string{"portal.yaml", "  - api: customers-http", "  - api: customers-http\n  - api: inventory-http"},
-		[3]string{"portal.yaml", "tags: [orders, checkout]", "tags: [orders, checkout, returns]"})
+		[3]string{"portal.yaml", "    tags: [orders, checkout]", "    title: Storefront Orders\n    tags: [orders, checkout, returns]"})
 	r := push(t, srv, "/api/v1/check", repo, edited, nil)
 	expect(t, r, "orders-http unchanged", "orders-events unchanged")
 	if got := updated(r); !slices.Equal(got, []bool{true, true}) {
@@ -547,6 +564,9 @@ func TestPushUnchangedUpdatesMetadata(t *testing.T) {
 	}
 	if got := consumes(); len(got) != 2 {
 		t.Errorf("the dry run stored consumes %q", got)
+	}
+	if got := apiHits("returns"); len(got) != 0 {
+		t.Errorf("the dry run indexed the new tag: %q", got)
 	}
 
 	r = push(t, srv, "/api/v1/push", repo, edited, nil)
@@ -556,6 +576,13 @@ func TestPushUnchangedUpdatesMetadata(t *testing.T) {
 	}
 	if got := consumes(); !slices.Equal(got, []string{"customers-http", "inventory-http", "payments-events"}) {
 		t.Errorf("consumes = %q", got)
+	}
+	want := []string{"orders-http 2.3.0: Storefront Orders"}
+	if got := apiHits("returns"); !slices.Equal(got, want) {
+		t.Errorf("search for the new tag = %q, want %q", got, want)
+	}
+	if got := apiHits("storefront"); !slices.Equal(got, want) {
+		t.Errorf("search for the new title = %q, want %q", got, want)
 	}
 
 	// A retry changes nothing.
@@ -570,7 +597,7 @@ func TestPushUnchangedUpdatesMetadata(t *testing.T) {
 	newer := checkout(t,
 		[3]string{"api/openapi.yaml", "version: 2.3.0", "version: 2.4.0"},
 		[3]string{"portal.yaml", "  - api: customers-http", "  - api: customers-http\n  - api: inventory-http"},
-		[3]string{"portal.yaml", "tags: [orders, checkout]", "tags: [orders, checkout, returns]"})
+		[3]string{"portal.yaml", "    tags: [orders, checkout]", "    title: Storefront Orders\n    tags: [orders, checkout, returns]"})
 	expect(t, push(t, srv, "/api/v1/push", repo, newer, nil), "orders-http published", "orders-events unchanged")
 	r = push(t, srv, "/api/v1/push", repo, checkout(t), nil)
 	if got := updated(r); !slices.Equal(got, []bool{false, true}) {
@@ -578,5 +605,8 @@ func TestPushUnchangedUpdatesMetadata(t *testing.T) {
 	}
 	if got := consumes(); !slices.Equal(got, []string{"customers-http", "inventory-http", "payments-events"}) {
 		t.Errorf("an old version's push changed consumes to %q", got)
+	}
+	if got, want := apiHits("storefront"), []string{"orders-http 2.4.0: Storefront Orders"}; !slices.Equal(got, want) {
+		t.Errorf("after an old version's push, search = %q, want %q", got, want)
 	}
 }

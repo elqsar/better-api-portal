@@ -74,13 +74,7 @@ const maxBody = 32 << 10
 // Build indexes a version of the API.
 func Build(api API, spec *model.Spec) *Version {
 	v := &Version{Model: spec}
-	title := api.Title
-	if title == "" {
-		title = spec.Title
-	}
-	v.Docs = append(v.Docs, Doc{Kind: KindAPI, Ref: api.ID, Title: title,
-		Terms: Words(title + " " + api.ID),
-		Body:  limit(spec.Description + " " + strings.Join(api.Tags, " ") + " " + Words(strings.Join(api.Tags, " ")))})
+	v.Docs = append(v.Docs, APIDoc(api, spec))
 
 	for _, m := range spec.Messages {
 		v.Messages = append(v.Messages, Message{Type: m.Key, Role: string(m.Role), Summary: m.Summary, Deprecated: m.Deprecated})
@@ -108,6 +102,18 @@ func Build(api API, spec *model.Spec) *Version {
 		v.Docs = append(v.Docs, Doc{Kind: KindSchema, Ref: ptr, Title: name, Terms: Words(name), Body: limit(b.String())})
 	}
 	return v
+}
+
+// APIDoc is the API's own search document: the only one that carries the
+// descriptor's title and tags, so it is all a descriptor-only change rewrites.
+func APIDoc(api API, spec *model.Spec) Doc {
+	title := api.Title
+	if title == "" {
+		title = spec.Title
+	}
+	return Doc{Kind: KindAPI, Ref: api.ID, Title: title,
+		Terms: Words(title + " " + api.ID),
+		Body:  limit(spec.Description + " " + strings.Join(api.Tags, " ") + " " + Words(strings.Join(api.Tags, " ")))}
 }
 
 // SchemaName is a schema's display name: the component name for
