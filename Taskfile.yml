@@ -37,7 +37,7 @@ tasks:
           name=portal_{{.VERSION}}_${os}_${arch}
           mkdir -p dist/$name
           CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}}" -o dist/$name/portal ./cmd/portal
-          cp internal/web/static/LICENSES.txt dist/$name/
+          cp LICENSE internal/web/static/LICENSES.txt dist/$name/
           tar -C dist -czf dist/$name.tar.gz $name
           rm -r dist/$name
       - cd dist && shasum -a 256 *.tar.gz > SHA256SUMS

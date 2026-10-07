@@ -58,7 +58,7 @@ past the 200-line cap.
 | Q5 | Who owns org rulesets — platform team or an API guild? | Platform team, changes via PR to config repo |
 | Q6 | Company event type prefix (`com.acme.`)? Existing types that violate `ce-type-format`? | Inventory existing types in M4; grandfather via ack list |
 | Q7 | Do existing JSON Schemas use keywords outside the compat checker subset (`oneOf` etc.)? | Measure in M1 against real schemas; each such change needs major bump or ack |
-| Q8 | Open-source licence and name | Apache-2.0; name TBD |
+| Q8 | Open-source licence and name | Licence: Apache-2.0 (decided 2026-10-07, `LICENSE`). Name TBD |
 
 ## Decisions
 

@@ -17,6 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 # shell; runs as an unprivileged user.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /portal /portal
+COPY --from=build /src/LICENSE /LICENSE
 COPY --from=build /src/internal/web/static/LICENSES.txt /LICENSES.txt
 EXPOSE 8080
 ENTRYPOINT ["/portal"]
