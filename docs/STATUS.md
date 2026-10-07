@@ -160,8 +160,8 @@ one file per area. Add to them as you go.
 ## Next steps
 
 1. **Deploy**, which closes the open "done when"s of M2–M4:
-   1. Cut `v0.1.0` (the repo is pushed) (`task release -- v0.1.0`, then `gh release create v0.1.0
-      dist/*`).
+   1. Cut `v0.1.0`: `task release -- v0.1.0`, then
+      `gh release create v0.1.0 dist/*`.
    2. Deploy the image (`task image`) with a `portal.config.yaml` that lists
       the real teams, OIDC and brokers.
    3. Pilot teams follow `docs/guide/onboarding.md`. Time each onboarding
